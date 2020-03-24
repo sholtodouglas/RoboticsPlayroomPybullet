@@ -1,2 +1,2 @@
-# pandaRL
-Wrapper around pybullet panda arm for RL 
+# PandaPybulletRL
+Wraps the pybullet panda arm in an gym env for RL work. 

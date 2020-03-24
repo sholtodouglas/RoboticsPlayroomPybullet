@@ -1,0 +1,7 @@
+README.md
+setup.py
+pandaRL.egg-info/PKG-INFO
+pandaRL.egg-info/SOURCES.txt
+pandaRL.egg-info/dependency_links.txt
+pandaRL.egg-info/requires.txt
+pandaRL.egg-info/top_level.txt

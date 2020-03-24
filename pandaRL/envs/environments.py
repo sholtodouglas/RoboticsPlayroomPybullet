@@ -1,9 +1,16 @@
+
+import os, inspect
+
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+print("current_dir=" + currentdir)
+os.sys.path.insert(0, currentdir)
+
 import pybullet as p
 import pybullet_data as pd
 import math
 import time
 import numpy as np
-import panda_sim as panda_sim
+from panda_sim import PandaSim
 from pybullet_utils import bullet_client
 import gym
 from scenes import default_scene, push_scene, complex_scene
@@ -111,7 +118,7 @@ class pandaEnv(gym.GoalEnv):
 		elif self.num_objects == 1:
 			scene = push_scene
 
-		self.panda = panda_sim.PandaSim(p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
+		self.panda = PandaSim(p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
 										self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
 										self.goal_upper_bound,  self.use_orientation, self.render_scene)
 		self.panda.control_dt = self.timeStep

@@ -61,6 +61,8 @@ class pointMassSim():
         orn = [-0.707107, 0.0, 0.0, 0.707107]  # p.getQuaternionFromEuler([-math.pi/2,math.pi/2,0])
         self.panda = self.bullet_client.loadURDF("franka_panda/panda.urdf", np.array([0, 0, 0]) + offset, orn,
                                                  useFixedBase=True, flags=flags)
+
+
         self.offset = offset + np.array([0, 0.1, -0.6]) # to center the env about the panda gripper location
         #create a constraint to keep the fingers centered
         c = self.bullet_client.createConstraint(self.panda,
@@ -87,6 +89,8 @@ class pointMassSim():
         collisionFilterMask = 0
         self.bullet_client.setCollisionFilterGroupMask(self.mass, -1, collisionFilterGroup,
                                                        collisionFilterMask)
+
+
         self.mass_cid = self.bullet_client.createConstraint(self.mass, -1, -1, -1, self.bullet_client.JOINT_FIXED,
                                                             [0, 0, 0], [0, 0, 0],
                                                             init_loc, [0, 0, 0, 1])
@@ -218,6 +222,19 @@ class pointMassSim():
         self.reset_goal_pos()
         self.reset_arm()
         self.reset_object_pos()
+
+    def visualise_sub_goal(self, o, lower_achieved_state = 'full_positional_state'):
+        if self.sub_goals is None:
+            flags = self.bullet_client.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
+            self.ghost_panda = self.bullet_client.loadURDF(
+                os.path.dirname(os.path.abspath(__file__)) + "/franka_panda/ghost_panda.urdf", np.array([0, 0, 0]) + self.original_offset,
+                orn,
+                useFixedBase=True, flags=flags)
+        collisionFilterGroup = 0
+        collisionFilterMask = 0
+        for i in range(0, self.bullet_client.getNumJoints(self.panda)):
+            self.bullet_client.setCollisionFilterGroupMask(self.ghost_panda, i, collisionFilterGroup,
+                                                           collisionFilterMask)
 
     def calc_actor_state(self):
         # state = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)

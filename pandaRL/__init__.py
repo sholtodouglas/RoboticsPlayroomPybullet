@@ -5,3 +5,7 @@ register(
     entry_point='pandaRL.envs:pandaReach',
 )
 
+register(
+    id='pointMass3D-v0',
+    entry_point='pandaRL.envs:pointMassEnv',
+)

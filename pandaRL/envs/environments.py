@@ -11,6 +11,7 @@ import math
 import time
 import numpy as np
 from panda_sim import PandaSim
+from pointMass3D import pointMass3D
 from pybullet_utils import bullet_client
 import gym
 from scenes import default_scene, push_scene, complex_scene
@@ -22,7 +23,8 @@ class pandaEnv(gym.GoalEnv):
 		'video.frames_per_second': 60
 	}
 
-	def __init__(self, num_objects = 1, env_range = [0.2, 0.2, 0.2], goal_range = [0.2, 0.1, 0.2], sparse=True, TARG_LIMIT=2, use_orientation=False, sparse_rew_thresh=0.02):
+	def __init__(self, num_objects = 1, env_range = [0.2, 0.2, 0.2], goal_range = [0.2, 0.1, 0.2],
+				 sparse=True, TARG_LIMIT=2, use_orientation=False, sparse_rew_thresh=0.02):
 		fps = 240
 		self.timeStep = 1. / fps
 		self.render_scene = False
@@ -44,16 +46,20 @@ class pandaEnv(gym.GoalEnv):
 		if use_orientation:
 			self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 1, 0.04])])
 			self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([1, 1, 1, 1, 0.0])])
+			arm_upper_obs_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1,1,1,1,1, 0.04])])  # includes velocity
+			arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1,1,1,1,1, 0.0])])
 			obj_upper_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 1])])
 			obj_lower_lim = np.concatenate([self.env_lower_bound, -np.array([1, 1, 1, 1])])
 		else:
 			self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([0.04])])
 			self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([0.0])])
+			arm_upper_obs_lim = np.concatenate([self.env_upper_bound, np.array([1,1,1,0.04])]) # includes velocity
+			arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1, 0.0])])
 			obj_upper_lim = self.env_upper_bound
 			obj_lower_lim = self.env_lower_bound
 
-		upper_obs_dim = np.concatenate([self.arm_upper_lim] + [obj_upper_lim] * self.num_objects)
-		lower_obs_dim = np.concatenate([self.arm_lower_lim] + [obj_lower_lim] * self.num_objects)
+		upper_obs_dim = np.concatenate([arm_upper_obs_lim] + [obj_upper_lim] * self.num_objects)
+		lower_obs_dim = np.concatenate([arm_lower_obs_lim] + [obj_lower_lim] * self.num_objects)
 		upper_goal_dim = np.concatenate([self.env_upper_bound] * self.num_goals)
 		lower_goal_dim = np.concatenate([self.env_lower_bound] * self.num_goals)
 
@@ -75,18 +81,28 @@ class pandaEnv(gym.GoalEnv):
 
 		if not self.physics_client_active:
 			self.activate_physics_client()
+			self.physics_client_active = True
 
 		self.panda.reset()
+		obs = self.panda.calc_state()
 
-	def render(self):
-		self.render_scene = True
+		return obs
+
+	def render(self, mode):
+		if (mode == "human"):
+			self.render_scene = True
+			return np.array([])
+		if mode == 'rgb_array':
+			raise NotImplementedError
+
 
 
 	def step(self, action):
 		self.panda.step(action)
+
 		self.p.stepSimulation() # this is out here because the multiprocessing version will step everyone simulataneously.
 		if self.render_scene:
-			time.sleep(self.timeStep)
+			time.sleep(self.timeStep*3)
 
 		obs = self.panda.calc_state()
 		r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
@@ -98,6 +114,7 @@ class pandaEnv(gym.GoalEnv):
 	def activate_physics_client(self):
 
 		if self.render_scene:
+			print('rendering m9----------------------')
 			self.p = bullet_client.BulletClient(connection_mode=p.GUI)
 			self.p.configureDebugVisualizer(p.COV_ENABLE_Y_AXIS_UP, 1)
 			self.p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
@@ -118,7 +135,7 @@ class pandaEnv(gym.GoalEnv):
 		elif self.num_objects == 1:
 			scene = push_scene
 
-		self.panda = PandaSim(p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
+		self.panda = pointMass3D(p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
 										self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
 										self.goal_upper_bound,  self.use_orientation, self.render_scene)
 		self.panda.control_dt = self.timeStep
@@ -168,15 +185,27 @@ class pandaPush(pandaEnv):
 	def __init__(self, num_objects = 1, env_range = [0.2, 0.2, 0.2], goal_range = [0.2, 0.05, 0.2], use_orientation=False): # recall that y is up
 		super().__init__(num_objects=num_objects, goal_range=goal_range, use_orientation=use_orientation)
 
-panda = pandaPush()
-panda.render()
-panda.reset()
-#panda.activate_human_interactive_mode()
-for i in range (100000):
-	action = panda.action_space.sample()
-	obs, r, done, info = panda.step(action)
-	print(obs, r)
+def main():
+	panda = pandaReach()
+	controls = []
+
+	panda.render(mode='human')
+	panda.reset()
+	controls.append(panda.p.addUserDebugParameter("X", panda.action_space.low[0], panda.action_space.high[0], 0))
+	controls.append(panda.p.addUserDebugParameter("Y", panda.action_space.low[1], panda.action_space.high[1], 0.2))
+	controls.append(panda.p.addUserDebugParameter("Z", panda.action_space.low[2], panda.action_space.high[2], 0))
+	controls.append(panda.p.addUserDebugParameter("grip", panda.action_space.low[3], panda.action_space.high[3], 0))
+	#panda.activate_human_interactive_mode()
+	for i in range (100000):
+		action = []
+		for i in range(0, len(controls)):
+			action.append(panda.p.readUserDebugParameter(i))
+		#action = panda.action_space.sample()
+		obs, r, done, info = panda.step(action)
+		print(obs, r)
 
 
 
 	
+if __name__ == "__main__":
+    main()

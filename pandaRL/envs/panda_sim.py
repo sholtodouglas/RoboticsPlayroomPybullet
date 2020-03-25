@@ -20,7 +20,11 @@ rp = jointPositions
 # Todo the different magnitudes of the action dimensions will impact BC loss
 
 class PandaSim(object):
-  def __init__(self, bullet_client, offset, load_scene,  arm_lower_lim, arm_upper_lim, env_lower_bound, env_upper_bound, goal_lower_bound, goal_upper_bound, use_orientation = False, render_scene = False):
+  def __init__(self, bullet_client, offset, load_scene,  arm_lower_lim, arm_upper_lim, env_lower_bound,
+               env_upper_bound, goal_lower_bound, goal_upper_bound, use_orientation = False,
+               render_scene = False):
+
+
     self.bullet_client = bullet_client
     self.bullet_client.setPhysicsEngineParameter(solverResidualThreshold=0)
     self.offset = np.array(offset)
@@ -343,4 +347,8 @@ class PandaSimAuto(PandaSim):
       self.state=self.states[self.cur_state]
       print("self.state=",self.state)
 
+
+class pointMass3D(PandaSim):
+  def __init__(self, bullet_client, offset, load_scene,  arm_lower_lim, arm_upper_lim, env_lower_bound, env_upper_bound, goal_lower_bound, goal_upper_bound, use_orientation = False, render_scene = False):
+    PandaSim.__init__(self, bullet_client, offset, load_scene,  arm_lower_lim, arm_upper_lim, env_lower_bound, env_upper_bound, goal_lower_bound, goal_upper_bound, use_orientation = use_orientation, render_scene = render_scene)
 

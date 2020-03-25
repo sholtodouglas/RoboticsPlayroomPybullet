@@ -188,7 +188,7 @@ class pointMass3D(object):
         self.reset_arm()
         self.reset_goal_positions()
         self.reset_object_positions()
-        self.t = 0.
+
 
     def calc_arm_state(self):
         # state = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)

@@ -1,5 +1,8 @@
 import numpy as np
 
+def nothing_scene(bullet_client, offset, flags):
+
+    return []
 def default_scene(bullet_client, offset, flags):
 
     bullet_client.loadURDF("tray/traybox.urdf", [0 + offset[0], 0 + offset[1], -0.6 + offset[2]],

@@ -5,10 +5,11 @@ import pybullet_data
 import os
 import time
 from pybullet_utils import bullet_client
-
+import pybullet_data as pd
 urdfRoot = pybullet_data.getDataPath()
 import gym.spaces as spaces
 import math
+from scenes import *
 
 GUI = False
 viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0, 0], distance=6, yaw=0, pitch=-90, roll=0,
@@ -16,72 +17,108 @@ viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0, 0],
 
 projectionMatrix = p.computeProjectionMatrixFOV(fov=50, aspect=1, nearVal=0.01, farVal=10)
 
+useNullSpace = 1
+ikSolver = 0
+pandaEndEffectorIndex = 11  # 8
+pandaNumDofs = 7
 
-class pointMassEnv(gym.GoalEnv):
-    metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second': 60
-    }
+ll = [-7] * pandaNumDofs
+# upper limits for null space (todo: set them to proper range)
+ul = [7] * pandaNumDofs
+# joint ranges for null space (todo: set them to proper range)
+jr = [7] * pandaNumDofs
+# restposes for null space
+jointPositions = [0.98, 0.458, 0.31, -2.24, -0.30, 2.66, 2.32, 0.02, 0.02]
+rp = jointPositions
 
-    def __init__(self, render=False, num_objects=0, sparse=True, TARG_LIMIT=2, sparse_rew_thresh=0.3):
-        self.num_objects = num_objects
-        self.use_orientation = False
-        action_dim = 4
-        obs_dim = 7
-        self.ENVIRONMENT_BOUNDS = 2.5  # LENGTH 6
-        self.sparse_rew_thresh = sparse_rew_thresh
-        self._max_episode_steps = 250
+class pointMassSim():
 
-        obs_dim += 6 * num_objects  # pos and vel of the other pm that we are knocking around.
-        self.num_goals = max(num_objects, 1)
-        goal_dim = 3 * self.num_goals
+    def __init__(self, bullet_client, offset, load_scene, arm_lower_lim, arm_upper_lim,
+        env_lower_bound, env_upper_bound, goal_lower_bound,
+        goal_upper_bound, use_orientation, render_scene):
+        self.bullet_client = bullet_client
+        self.bullet_client.setPhysicsEngineParameter(solverResidualThreshold=0)
+        flags = self.bullet_client.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
+        self.objects = load_scene(self.bullet_client, offset, flags) # Todo: later, put this after the centering offset so that objects are centered around it too.
+        self.num_objects = len(self.objects)
+        self.use_orientation = use_orientation
+        self.num_objects = len(self.objects)
+        self.num_goals = max(self.num_objects, 1)
 
-        high = np.ones([action_dim])
-        self.action_space = spaces.Box(-high, high)
-        high_obs = self.ENVIRONMENT_BOUNDS * np.ones([obs_dim])
-        high_goal = self.ENVIRONMENT_BOUNDS * np.ones([goal_dim])
+        self.arm_lower_lim = arm_lower_lim
+        self.arm_upper_lim = arm_upper_lim
+        self.env_upper_bound = env_upper_bound
+        self.env_lower_bound = env_lower_bound
+        self.goal_upper_bound = goal_upper_bound
+        self.goal_lower_bound = goal_lower_bound
+        self.render_scene = render_scene
 
-        env_range = [2.5, 2.5, 2]
-        goal_range = [2, 2, 1.5]
-
-        self.env_upper_bound = np.array(env_range)
-        self.env_lower_bound = -self.env_upper_bound
-        self.env_lower_bound[2] = 0  # set the y (updown) min to 0.
-        self.goal_upper_bound = np.array(goal_range)
-        self.goal_lower_bound = -self.goal_upper_bound
-        self.goal_lower_bound[2] = 0  # set the y (updown) min to 0.
-        self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([0.04])])
-        self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([0.0])])
-
-
-        self.observation_space = spaces.Dict(dict(
-            desired_goal=spaces.Box(-high_goal, high_goal),
-            achieved_goal=spaces.Box(-high_goal, high_goal),
-            observation=spaces.Box(-high_obs, high_obs),
-            controllable_achieved_goal=spaces.Box(-self.ENVIRONMENT_BOUNDS * np.ones([action_dim]),
-                                                  self.ENVIRONMENT_BOUNDS * np.ones([action_dim])),
-            full_positional_state=spaces.Box(-self.ENVIRONMENT_BOUNDS * np.ones([action_dim + 3 * self.num_objects]),
-                                             self.ENVIRONMENT_BOUNDS * np.ones([action_dim + 3 * self.num_objects]))
-        ))
-
-        self.render_scene = False
-        self.bullet_client = p
         self.physics_client_active = 0
         self.movable_goal = False
         self.roving_goal = False
-        self.TARG_LIMIT = TARG_LIMIT
-        self.TARG_MIN = 0.1
-        self._seed()
-        self.global_step = 0
-        self.opposite_goal = False
+
+
+        orn = [-0.707107, 0.0, 0.0, 0.707107]  # p.getQuaternionFromEuler([-math.pi/2,math.pi/2,0])
+        # self.panda = self.bullet_client.loadURDF("franka_panda/panda.urdf", np.array([0, 0, 0]) + offset, orn,
+        #                                          useFixedBase=True, flags=flags)
+        self.offset = offset + np.array([0, 0.1, -0.6]) # to center the env about the panda gripper location
+        # create a constraint to keep the fingers centered
+        # c = self.bullet_client.createConstraint(self.panda,
+        #                                         9,
+        #                                         self.panda,
+        #                                         10,
+        #                                         jointType=self.bullet_client.JOINT_GEAR,
+        #                                         jointAxis=[1, 0, 0],
+        #                                         parentFramePosition=[0, 0, 0],
+        #                                         childFramePosition=[0, 0, 0])
+        # self.bullet_client.changeConstraint(c, gearRatio=-1, erp=0.1, maxForce=50)
+        #
+        # for j in range(self.bullet_client.getNumJoints(self.panda)):
+        #     self.bullet_client.changeDynamics(self.panda, j, linearDamping=0, angularDamping=0)
+
+        sphereRadius = 0.03
+        mass = 1
+        colSphereId = self.bullet_client.createCollisionShape(self.bullet_client.GEOM_SPHERE, radius=sphereRadius)
+        visId = self.bullet_client.createVisualShape(self.bullet_client.GEOM_SPHERE, radius=sphereRadius,
+                                                     rgbaColor=[1, 0, 0, 1])
+        init_loc = self.add_centering_offset(np.array([0, 0.1, 0]))
+        self.mass = self.bullet_client.createMultiBody(mass, colSphereId, visId, init_loc)
+        self.mass_cid = self.bullet_client.createConstraint(self.mass, -1, -1, -1, self.bullet_client.JOINT_FIXED,
+                                                            [0, 0, 0], [0, 0, 0],
+                                                            init_loc, [0, 0, 0, 1])
+        self.endEffectorIndex = 11
+        self.state = 0
+        self.control_dt = 1. / 240.
+        self.finger_target = 0
+        self.gripper_height = 0.2
+        # create the goal objects
         self.show_goal = True
-        self.objects = []
-        self.num_objects = num_objects
-        self.state_representation = None
-        self.sub_goals = None
-        self.offset = np.array([0,0,0])
-        if sparse:
-            self.set_sparse_reward()
+        alpha = 1
+        self.obj_colors = [[0, 1, 0, alpha], [0, 0, 1, alpha]]  # colors for two objects
+        if self.render_scene and self.show_goal:
+
+
+            relativeChildOrientation = [0, 0, 0, 1]
+            self.goals = []
+            self.goal_cids = []
+            collisionFilterGroup = 0
+            collisionFilterMask = 0
+            for g in range(self.num_goals):
+                init_loc = self.add_centering_offset(np.array([0, 0.2, 0]))
+                visId = self.bullet_client.createVisualShape(self.bullet_client.GEOM_SPHERE, radius=sphereRadius,
+                                                             rgbaColor=self.obj_colors[g])
+                self.goals.append(self.bullet_client.createMultiBody(mass, colSphereId, visId, init_loc))
+
+                self.bullet_client.setCollisionFilterGroupMask(self.goals[g], -1, collisionFilterGroup,
+                                                               collisionFilterMask)
+                self.goal_cids.append(
+                    self.bullet_client.createConstraint(self.goals[g], -1, -1, -1, self.bullet_client.JOINT_FIXED,
+                                                        [0, 0, 0], [0, 0, 0],
+                                                        init_loc, relativeChildOrientation))
+        lookat = [0, 0, 0.0]
+        distance = 0.7
+        yaw = 0
+        self.bullet_client.resetDebugVisualizerCamera(distance, yaw, -89, lookat)
 
 
     def add_centering_offset(self, numbers):
@@ -95,145 +132,74 @@ class pointMassEnv(gym.GoalEnv):
         numbers = numbers - offset
         return numbers
 
-    def crop(self, num, lim):
-        if num >= 0 and num < lim:
-            num = lim
-        elif num < 0 and num > -lim:
-            num = -lim
-        return num
-
     def reset_goal_pos(self, goal=None):
-
-        # if self.state_representation:
-        # 	random_ep = np.random.randint(0, len(self.episodes))
-        # 	#random_frame = np.random.randint(0, len(self.episodes[random_ep]))
-        # 	self.desired_frame = self.episodes[random_ep][-1][0]
-        # 	self.desired_state = self.desired_frame['observation']
-        # 	goal = self.desired_frame['achieved_goal']
-        # 	print('set desired')
         if goal is None:
             self.goal = []
             for g in range(self.num_goals):
                 goal = np.random.uniform(self.env_lower_bound, self.env_upper_bound)
-
                 self.goal.append(goal)
             self.goal = np.concatenate(self.goal)
-
         else:
-            self.goal = goal
 
-        self.goal = np.array(self.goal)
+            self.goal = np.array(self.add_centering_offset(goal))
 
-        if self.render_scene:
-            if self.show_goal:
-                index = 0
-                for g in range(0, self.num_goals):
-                    self.bullet_client.resetBasePositionAndOrientation(self.goals[g],
-                                                            self.goal[index:index+3], [0, 0, 0, 1])
-                    self.bullet_client.changeConstraint(self.goal_cids[g], self.goal[index:index+3],
-                                             maxForce=100)
-                    index += 3
-
-    def reset_object_pos(self, obs=None, extra_info=None, curric=False):
-
-        if obs is None:
+        if self.render_scene and self.show_goal:
             index = 0
-            for obj in self.objects:
-                current_pos = self.bullet_client.getBasePositionAndOrientation(self.mass)[0]
-                if curric == True:
-                    vector_to_goal = np.array(
-                        [self.goal[index] - current_pos[0], self.goal[index + 1] - current_pos[1], 0.6])
+            for g in range(self.num_goals):
+                pos = self.add_centering_offset(self.goal[index:index + 3])
+                self.bullet_client.resetBasePositionAndOrientation(self.goals[g], pos, [0, 0, 0, 1])
+                self.bullet_client.changeConstraint(self.goal_cids[g], pos, maxForce=100)
+                index += 3
 
-                    pos = np.array(current_pos) + vector_to_goal / 2 + (np.random.rand(3) * 1) - 0.5
-
-                # shift it a little if too close to the goal
-                pos = np.random.rand(3) * 4 - 2
-                while self.calc_target_distance(pos[0:2], [self.goal[index], self.goal[index + 1]]) < 1:
-                    pos = pos + (np.random.rand(3) * 1) - 0.5
-                while self.calc_target_distance(pos[0:2], [current_pos[0], current_pos[1]]) < 1:
-                    pos = pos + (np.random.rand(3) * 1) - 0.5
-                pos[2] = 0.4
-                ori = [0, 0, 0, 1]
-                obs_vel_x, obs_vel_y = 0, 0
-                self.bullet_client.resetBasePositionAndOrientation(obj, pos, ori)
-                self.bullet_client.resetBaseVelocity(obj, [obs_vel_x, obs_vel_y, 0])
-                index += 2
+    def reset_object_pos(self, obs=None):
+        # Todo object velocities to make this properly deterministic
+        if obs is None:
+            height_offset = 0.03
+            for o in self.objects:
+                pos = self.add_centering_offset(np.random.uniform(self.env_lower_bound, self.env_upper_bound))
+                pos[1] = pos[1] + height_offset  # so they don't collide
+                self.bullet_client.resetBasePositionAndOrientation(o, pos, [0, 0, 0, 1])
+                height_offset += 0.03
+            for i in range(0, 10):
+                self.bullet_client.stepSimulation()
         else:
-            starting_index = 4  # the first object index
-            for obj in self.objects:
-                obs_x, obs_y = obs[starting_index], obs[starting_index + 1]
-                obs_z = 0.4 if extra_info is None else extra_info[0]
-                pos = [obs_x, obs_y, obs_z]
-                ori = [0, 0, 0, 1] if extra_info is None else extra_info[1:5]
-                obs_vel_x, obs_vel_y = obs[starting_index + 2], obs[starting_index + 3]
-                self.bullet_client.resetBasePositionAndOrientation(obj, pos, ori)
-                self.bullet_client.resetBaseVelocity(obj, [obs_vel_x, obs_vel_y, 0])
-                starting_index += 4  # go the the next object in the observation
-
-    def initialize_actor_pos(self, o):
-        x, y, x_vel, y_vel = o[0], o[1], o[2], o[3]
-        self.bullet_client.resetBasePositionAndOrientation(self.mass, [x, y, -0.1], [0, 0, 0, 1])
-        self.bullet_client.changeConstraint(self.mass_cid, [x, y, -0.1], maxForce=100)
-        self.bullet_client.resetBaseVelocity(self.mass, [x_vel, y_vel, 0])
-
-    # TODO change the env initialise start pos to a more general form of the function
-
-    def initialize_start_pos(self, o, extra_info=None):
-        if type(o) is dict:
-            o = o['observation']
-        self.initialize_actor_pos(o)
-        if self.num_objects > 0:
-            self.reset_object_pos(o, extra_info)
-
-    def visualise_sub_goal(self, sub_goal, sub_goal_state='achieved_goal'):
-
-        # in the sub_goal case we either only  have the positional info, or we have the full state positional info.
-        # print(sub_goal)
-        index = 0
-        if self.sub_goals is None:
-            self.sub_goals = []
-            self.sub_goal_cids = []
-            print('initing')
-            sphereRadius = 0.15
-            mass = 1
-            colSphereId = self.bullet_client.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
-            relativeChildPosition = [0, 0, 0]
-            relativeChildOrientation = [0, 0, 0, 1]
-            alpha = 0.5
-            colors = [[212 / 250, 175 / 250, 55 / 250, alpha], [0, 1, 0, alpha], [0, 0, 1, alpha]]
-            if sub_goal_state is 'achieved_goal':
-                colors = [[0, 1, 0, alpha], [0, 0, 1, alpha]]
-
-            for g in range(0, len(sub_goal) // 2):
-                if g == 0 and sub_goal_state is not 'achieved_goal':  # all other ones include sphere
-                    # the sphere
-                    visId = p.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius,
-                                                rgbaColor=colors[g])
+            if self.use_orientation:
+                index = 8
+                increment = 7
+            else:
+                index = 4
+                increment = 3
+            for o in self.objects:
+                pos = obs[index:index + 3]
+                if self.use_orientation:
+                    orn = obs[index + 3:index + 7]
                 else:
+                    orn = [0, 0, 0, 1]
+                self.bullet_client.resetBasePositionAndOrientation(o, pos, orn)
+                index += increment
 
-                    visId = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.35, 0.35, 0.35],
-                                                rgbaColor=colors[g])
+    def reset_arm(self):
+        self.bullet_client.resetBasePositionAndOrientation(self.mass,
+                                self.add_centering_offset(np.random.uniform(self.env_lower_bound,self.env_upper_bound)), [0,0,0,1])
 
-                self.sub_goals.append(
-                    self.bullet_client.createMultiBody(mass, colSphereId, visId, [sub_goal[index], sub_goal[index + 1], 0.1]))
-                collisionFilterGroup = 0
-                collisionFilterMask = 0
-                self.bullet_client.setCollisionFilterGroupMask(self.sub_goals[g], -1, collisionFilterGroup, collisionFilterMask)
-                self.sub_goal_cids.append(
-                    self.bullet_client.createConstraint(self.sub_goals[g], -1, -1, -1, self.bullet_client.JOINT_FIXED,
-                                             [sub_goal[index], sub_goal[index + 1], 0.1], [0, 0, 0.1],
-                                             relativeChildPosition, relativeChildOrientation))
-                index += 2
+        # index = 0
+        # for j in range(self.bullet_client.getNumJoints(self.panda)):
+        #     self.bullet_client.changeDynamics(self.panda, j, linearDamping=0, angularDamping=0)
+        #     info = self.bullet_client.getJointInfo(self.panda, j)
+        #     # print("info=",info)
+        #     jointName = info[1]
+        #     jointType = info[2]
+        #     if (jointType == self.bullet_client.JOINT_PRISMATIC):
+        #         self.bullet_client.resetJointState(self.panda, j, jointPositions[index])
+        #         index = index + 1
+        #     if (jointType == self.bullet_client.JOINT_REVOLUTE):
+        #         self.bullet_client.resetJointState(self.panda, j, jointPositions[index])
+        #         index = index + 1
 
-
-        else:
-
-            for g in range(0, len(sub_goal) // 2):
-                self.bullet_client.resetBasePositionAndOrientation(self.sub_goals[g], [sub_goal[index], sub_goal[index + 1], 0.1],
-                                                        [0, 0, 0, 1])
-                self.bullet_client.changeConstraint(self.sub_goal_cids[g], [sub_goal[index], sub_goal[index + 1], 0.1],
-                                         maxForce=100)
-                index += 2
+    def reset(self):
+        self.reset_goal_pos()
+        self.reset_arm()
+        self.reset_object_pos()
 
     def calc_actor_state(self):
         # state = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)
@@ -292,63 +258,6 @@ class pointMassEnv(gym.GoalEnv):
 
         return return_dict
 
-    def calc_target_distance(self, achieved_goal, desired_goal):
-        distance = np.linalg.norm(achieved_goal - desired_goal)
-        return distance
-
-
-    def compute_reward(self, achieved_goal, desired_goal, info=None):
-
-        # reward given if new pos is closer than old
-
-        current_distance = self.calc_target_distance(achieved_goal, desired_goal)
-
-        position_reward = -1000 * (current_distance - self.last_target_distance)
-        self.last_target_distance = current_distance
-
-        # velocity_diff = self.calc_velocity_distance()
-        # velocity_reward = -100*(velocity_diff - self.last_velocity_distance)
-        # self.last_velocity_distance = velocity_diff
-        # velocity_reward = self.calc_velocity_distance()
-
-        # print('Vreward', velocity_reward)
-
-        # if self.state_representation is not None:
-        # 	position_reward = -tf.reduce_mean(tf.losses.MAE(self.state_representation(np.expand_dims(self.calc_state()['observation'],0))[0], self.state_representation(np.expand_dims(self.desired_state,0))[0]))
-
-        return position_reward  # +velocity_reward
-
-    def set_sparse_reward(self):
-        print('Environment set to sparse reward')
-        self.compute_reward = self.compute_reward_sparse
-
-    def compute_reward_sparse(self, achieved_goal, desired_goal, info=None):
-
-        # I know this should be vectorized but cbf atm - my version doesn't use vector ag and dg. Just need this for baselines
-        # compatability.
-        initially_vectorized = True
-        if len(achieved_goal.shape) == 1:
-            achieved_goal = np.expand_dims(np.array(achieved_goal), axis=0)
-            desired_goal = np.expand_dims(np.array(desired_goal), axis=0)
-            initially_vectorized = False
-
-        reward = np.zeros(len(achieved_goal))
-
-        for i in range(0, len(achieved_goal)):
-            for g in range(0, len(achieved_goal[i]) // 3):
-                g = g * 3  # increments of 2
-                current_distance = self.calc_target_distance(achieved_goal[g:g + 3], desired_goal[g:g + 3])
-                if current_distance > self.sparse_rew_thresh:
-                    # TODO : DECIDE WHAT WE WANT HERE
-                    # reward = -1
-                    reward[i] -= 1
-
-        if not initially_vectorized:
-            return reward[0]
-        else:
-            return reward
-
-
     def goto(self, pos=None, orn=None, gripper=None):
         pos = list(pos)
         orn = list(orn)
@@ -367,8 +276,6 @@ class pointMassEnv(gym.GoalEnv):
                                                          force=10)
 
     def step(self, action):
-
-
         # pos = action[0:3]
         # if self.use_orientation:
         #     orn = action[3:7]
@@ -379,139 +286,12 @@ class pointMassEnv(gym.GoalEnv):
         action = action[0:3]
         current_pos = self.subtract_centering_offset(self.bullet_client.getBasePositionAndOrientation(self.mass)[0])
 
-        new_pos = current_pos + action * 0.2
-        new_pos = np.clip(self.add_centering_offset(new_pos), self.env_lower_bound, self.env_upper_bound)
+        new_pos = current_pos + action
+        new_pos = self.add_centering_offset(np.clip(new_pos, self.env_lower_bound, self.env_upper_bound))
         self.bullet_client.changeConstraint(self.mass_cid, new_pos, maxForce=100)
 
 
-        for i in range(0, 20):
-            self.bullet_client.stepSimulation()
-        obs = self.calc_state()
 
-        r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
-
-        current_distance = self.calc_target_distance(obs['achieved_goal'], self.goal)
-
-        self.global_step += 1
-
-        success = 0 if self.compute_reward_sparse(obs['achieved_goal'],
-                                                  obs['desired_goal']) < 0 else 1  # assuming negative rewards
-
-        # this part is only for interoperability with baselines
-        if self.global_step == self._max_episode_steps:
-            done = True
-        else:
-            done = False
-        return obs, r, done, {'is_success': success}
-
-    def reset(self):
-        # self.bullet_client.resetSimulation()
-        self.global_step = 0
-
-        if self.physics_client_active == 0:
-
-            if self.render_scene:
-                self.bullet_client = bullet_client.BulletClient(connection_mode=p.GUI)
-            else:
-                self.bullet_client = bullet_client.BulletClient(connection_mode=p.DIRECT)
-
-            self.physics_client_active = 1
-
-            sphereRadius = 0.2
-            mass = 1
-            visualShapeId = 2
-            colSphereId = self.bullet_client.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
-            self.mass = self.bullet_client.createMultiBody(mass, colSphereId, visualShapeId, [0, 0, 0.4])
-            # objects = self.bullet_client.loadMJCF("/Users/francisdouglas/bullet3/data/mjcf/sphere.xml")
-            # self.mass = objects[0]
-            # self.mass = [p.loadURDF((os.path.join(urdfRoot,"sphere2.urdf")), 0,0.0,1.0,1.00000,0.707107,0.000000,0.707107)]
-            relativeChildPosition = [0, 0, 0]
-            relativeChildOrientation = [0, 0, 0, 1]
-            self.mass_cid = self.bullet_client.createConstraint(self.mass, -1, -1, -1, self.bullet_client.JOINT_FIXED, [0, 0, 0], [0, 0, 0],
-                                                     relativeChildPosition, relativeChildOrientation)
-
-            alpha = 1
-            colors = [[0, 1, 0, alpha], [0, 0, 1, alpha]]
-
-            if self.show_goal:
-                self.goals = []
-                self.goal_cids = []
-
-                for g in range(0, self.num_goals):
-                    visId = p.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius,
-                                                rgbaColor=colors[g])
-                    self.goals.append(self.bullet_client.createMultiBody(mass, colSphereId, visId, [1, 1, 1.4]))
-                    collisionFilterGroup = 0
-                    collisionFilterMask = 0
-                    self.bullet_client.setCollisionFilterGroupMask(self.goals[g], -1, collisionFilterGroup, collisionFilterMask)
-                    self.goal_cids.append(
-                        self.bullet_client.createConstraint(self.goals[g], -1, -1, -1, self.bullet_client.JOINT_FIXED, [1, 1, 1.4], [0, 0, 0],
-                                                 relativeChildPosition, relativeChildOrientation))
-            # self.bullet_client.setRealTimeSimulation(1)
-
-            if self.num_objects > 0:
-
-                colcubeId = self.bullet_client.createCollisionShape(p.GEOM_BOX, halfExtents=[0.35, 0.35, 0.35])
-                for i in range(0, self.num_objects):
-                    visId = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.35, 0.35, 0.35],
-                                                rgbaColor=colors[i])
-                    self.objects.append(self.bullet_client.createMultiBody(0.1, colcubeId, visId, [0, 0, 1.5]))
-
-                # self.object = self.bullet_client.createMultiBody(mass,colSphereId,visualShapeId,[0.5,0.5,0.4])
-                colwallId = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.05, 2.5, 0.5])
-                wallvisId = 10
-                wall = [p.createMultiBody(0, colwallId, 10, [self.TARG_LIMIT * 2 + 0.2, 0, 0.0],
-                                          p.getQuaternionFromEuler([0, 0, 0]))]
-                wall = [p.createMultiBody(0, colwallId, 10, [-self.TARG_LIMIT * 2 - 0.2, 0, 0.0],
-                                          p.getQuaternionFromEuler([0, 0, 0]))]
-                wall = [
-                    p.createMultiBody(0, colwallId, 10, [0, self.TARG_LIMIT * 2 + 0.2, 0],
-                                      p.getQuaternionFromEuler([0, 0, math.pi / 2]))]
-                wall = [
-                    p.createMultiBody(0, colwallId, 10, [0, -self.TARG_LIMIT * 2 - 0.2, 0],
-                                      p.getQuaternionFromEuler([0, 0, math.pi / 2]))]
-
-            if GUI:
-                ACTION_LIMIT = 1
-                self.x_shift = self.bullet_client.addUserDebugParameter("X", -ACTION_LIMIT, ACTION_LIMIT, 0.0)
-                self.y_shift = self.bullet_client.addUserDebugParameter("Y", -ACTION_LIMIT, ACTION_LIMIT, 0.0)
-
-            self.bullet_client.configureDebugVisualizer(p.COV_ENABLE_GUI, GUI)
-
-            self.bullet_client.setGravity(0, 0, -10)
-            lookat = [0, 0, 0.1]
-            distance = 7
-            yaw = 0
-            self.bullet_client.resetDebugVisualizerCamera(distance, yaw, -89, lookat)
-            colcubeId = self.bullet_client.createCollisionShape(p.GEOM_BOX, halfExtents=[5, 5, 0.1])
-            visplaneId = self.bullet_client.createVisualShape(p.GEOM_BOX, halfExtents=[5, 5, 0.1], rgbaColor=[1, 1, 1, 1])
-            plane = self.bullet_client.createMultiBody(0, colcubeId, visplaneId, [0, 0, -0.2])
-
-        # self.bullet_client.loadSDF(os.path.join(urdfRoot, "plane_stadium.sdf"))
-
-        self.bullet_client.resetBasePositionAndOrientation(self.mass, [0, 0, 0.6], [0, 0, 0, 1])
-        self.reset_goal_pos()
-
-        # reset mass location
-        if self.opposite_goal:
-            x = -self.goal[0]
-            y = -self.goal[1]
-        else:
-            x = self.crop(self.np_random.uniform(low=-self.TARG_LIMIT, high=self.TARG_LIMIT), self.TARG_MIN)
-            y = self.crop(self.np_random.uniform(low=-self.TARG_LIMIT, high=self.TARG_LIMIT), self.TARG_MIN)
-        x_vel = 0  # self.np_random.uniform(low=-1, high=1)
-        y_vel = 0  # self.np_random.uniform(low=-1, high=1)
-
-        self.initialize_actor_pos([x, y, x_vel, y_vel])
-        if self.num_objects > 0:
-            self.reset_object_pos()
-
-        obs = self.calc_state()
-        self.last_target_distance = self.calc_target_distance(obs['achieved_goal'], obs['desired_goal'])
-        # self.last_velocity_distance = self.calc_velocity_distance()
-
-
-        return obs
 
 
     def render(self, mode):
@@ -534,14 +314,14 @@ class pointMassEnv(gym.GoalEnv):
 
 
 
-class pandaEnv(gym.GoalEnv):
+class pointMassEnv(gym.GoalEnv):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second': 60
     }
 
-    def __init__(self, num_objects = 1, env_range = [0.2, 0.2, 0.2], goal_range = [0.2, 0.1, 0.2],
-                 sparse=True, TARG_LIMIT=2, use_orientation=False, sparse_rew_thresh=0.02):
+    def __init__(self, num_objects = 0, env_range = [0.2, 0.2, 0.2], goal_range = [0.2, 0.1, 0.2],
+                 sparse=True, use_orientation=False, sparse_rew_thresh=0.03):
         fps = 240
         self.timeStep = 1. / fps
         self.render_scene = False
@@ -552,25 +332,38 @@ class pandaEnv(gym.GoalEnv):
         self.goal_range = goal_range
         self.env_range = env_range
         self.num_goals = max(self.num_objects, 1)
-        self.env_upper_bound = np.array(env_range)
+        action_dim = 4
+        obs_dim = 7
+        self.sparse_rew_thresh = sparse_rew_thresh
+        self._max_episode_steps = 250
+
+        obs_dim += 6 * num_objects  # pos and vel of the other pm that we are knocking around.
+
+        high = np.ones([action_dim])*0.02
+        self.action_space = spaces.Box(-high, high) # interesting how key this is. Oh because you know what, before it couldn't fucking go down. Duh.
+
+        env_range = np.array(env_range)
+        goal_range = np.array(goal_range)
+        self.env_upper_bound = env_range
         self.env_lower_bound = -self.env_upper_bound
-        self.env_lower_bound[1] = 0  # set the y (updown) min to 0.
-        self.goal_upper_bound = np.array(goal_range)
+        #self.env_lower_bound[1] = 0  # set the y (updown) min to 0.
+        self.goal_upper_bound = goal_range
         self.goal_lower_bound = -self.goal_upper_bound
-        self.goal_lower_bound[1] = 0  # set the y (updown) min to 0.
+        #self.goal_lower_bound[1] = 0  # set the y (updown) min to 0.
 
         # Todo currently we do not use velocity. Lets see if that matters
         if use_orientation:
             self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 1, 0.04])])
             self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([1, 1, 1, 1, 0.0])])
-            arm_upper_obs_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1,1,1,1,1, 0.04])])  # includes velocity
-            arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1,1,1,1,1, 0.0])])
+            arm_upper_obs_lim = np.concatenate(
+                [self.env_upper_bound, np.array([1, 1, 1, 1, 1, 1, 1, 0.04])])  # includes velocity
+            arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1, 1, 1, 1, 1, 0.0])])
             obj_upper_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 1])])
             obj_lower_lim = np.concatenate([self.env_lower_bound, -np.array([1, 1, 1, 1])])
         else:
             self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([0.04])])
             self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([0.0])])
-            arm_upper_obs_lim = np.concatenate([self.env_upper_bound, np.array([1,1,1,0.04])]) # includes velocity
+            arm_upper_obs_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 0.04])])  # includes velocity
             arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1, 0.0])])
             obj_upper_lim = self.env_upper_bound
             obj_lower_lim = self.env_lower_bound
@@ -580,7 +373,7 @@ class pandaEnv(gym.GoalEnv):
         upper_goal_dim = np.concatenate([self.env_upper_bound] * self.num_goals)
         lower_goal_dim = np.concatenate([self.env_lower_bound] * self.num_goals)
 
-        self.action_space = spaces.Box(self.arm_lower_lim, self.arm_upper_lim)
+        #self.action_space = spaces.Box(self.arm_lower_lim, self.arm_upper_lim)
 
         self.observation_space = spaces.Dict(dict(
             desired_goal=spaces.Box(lower_goal_dim, upper_goal_dim),
@@ -589,6 +382,7 @@ class pandaEnv(gym.GoalEnv):
             controllable_achieved_goal=spaces.Box(self.arm_lower_lim, self.arm_upper_lim),
             full_positional_state=spaces.Box(lower_obs_dim, upper_obs_dim)
         ))
+
 
         if sparse:
             self.compute_reward = self.compute_reward_sparse
@@ -617,7 +411,10 @@ class pandaEnv(gym.GoalEnv):
     def step(self, action):
         self.panda.step(action)
 
-        self.p.stepSimulation() # this is out here because the multiprocessing version will step everyone simulataneously.
+        for i in range(0, 20):
+            self.p.stepSimulation()
+            # this is out here because the multiprocessing version will step everyone simulataneously.
+
         if self.render_scene:
             time.sleep(self.timeStep*3)
 
@@ -639,9 +436,9 @@ class pandaEnv(gym.GoalEnv):
             self.p = bullet_client.BulletClient(connection_mode=p.DIRECT)
 
 
-        self.p.setPhysicsEngineParameter(maxNumCmdPer1ms=1000)
-        self.p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=38, cameraPitch=-22,
-                                     cameraTargetPosition=[0.35, -0.13, 0])
+        #self.p.setPhysicsEngineParameter(maxNumCmdPer1ms=1000)
+        # self.p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=38, cameraPitch=-22,
+        #                              cameraTargetPosition=[0.35, -0.13, 0])
         self.p.setAdditionalSearchPath(pd.getDataPath())
 
         self.p.setTimeStep(self.timeStep)
@@ -652,7 +449,7 @@ class pandaEnv(gym.GoalEnv):
         elif self.num_objects == 1:
             scene = push_scene
 
-        self.panda = pointMass3D(p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
+        self.panda = pointMassSim(self.p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
                                         self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
                                         self.goal_upper_bound,  self.use_orientation, self.render_scene)
         self.panda.control_dt = self.timeStep
@@ -694,3 +491,26 @@ class pandaEnv(gym.GoalEnv):
     def activate_human_interactive_mode(self):
         self.panda.step = self.panda.human_interactive_step
 
+
+def main():
+    panda = pointMassEnv()
+    controls = []
+
+    panda.render(mode='human')
+    panda.reset()
+    controls.append(panda.p.addUserDebugParameter("X", panda.action_space.low[0], panda.action_space.high[0], 0))
+    controls.append(panda.p.addUserDebugParameter("Y", panda.action_space.low[1], panda.action_space.high[1], 0.02))
+    controls.append(panda.p.addUserDebugParameter("Z", panda.action_space.low[2], panda.action_space.high[2], 0))
+    controls.append(panda.p.addUserDebugParameter("grip", panda.action_space.low[3], panda.action_space.high[3], 0))
+    # panda.activate_human_interactive_mode()
+    for i in range(100000):
+        action = []
+        for i in range(0, len(controls)):
+            action.append(panda.p.readUserDebugParameter(i))
+        # action = panda.action_space.sample()
+        obs, r, done, info = panda.step(np.array(action))
+        print(obs, r)
+
+
+if __name__ == "__main__":
+    main()

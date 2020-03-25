@@ -5,7 +5,7 @@ def nothing_scene(bullet_client, offset, flags):
     return []
 def default_scene(bullet_client, offset, flags):
 
-    bullet_client.loadURDF("tray/traybox.urdf", [0 + offset[0], 0 + offset[1], -0.6 + offset[2]],
+    bullet_client.loadURDF("tray/traybox.urdf", [0 + offset[0], -0.1 + offset[1], -0.6 + offset[2]],
                                 [-0.5, -0.5, -0.5, 0.5], flags=flags)
 
 

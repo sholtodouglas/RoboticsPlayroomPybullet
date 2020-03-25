@@ -59,22 +59,22 @@ class pointMassSim():
 
 
         orn = [-0.707107, 0.0, 0.0, 0.707107]  # p.getQuaternionFromEuler([-math.pi/2,math.pi/2,0])
-        # self.panda = self.bullet_client.loadURDF("franka_panda/panda.urdf", np.array([0, 0, 0]) + offset, orn,
-        #                                          useFixedBase=True, flags=flags)
+        self.panda = self.bullet_client.loadURDF("franka_panda/panda.urdf", np.array([0, 0, 0]) + offset, orn,
+                                                 useFixedBase=True, flags=flags)
         self.offset = offset + np.array([0, 0.1, -0.6]) # to center the env about the panda gripper location
-        # create a constraint to keep the fingers centered
-        # c = self.bullet_client.createConstraint(self.panda,
-        #                                         9,
-        #                                         self.panda,
-        #                                         10,
-        #                                         jointType=self.bullet_client.JOINT_GEAR,
-        #                                         jointAxis=[1, 0, 0],
-        #                                         parentFramePosition=[0, 0, 0],
-        #                                         childFramePosition=[0, 0, 0])
-        # self.bullet_client.changeConstraint(c, gearRatio=-1, erp=0.1, maxForce=50)
-        #
-        # for j in range(self.bullet_client.getNumJoints(self.panda)):
-        #     self.bullet_client.changeDynamics(self.panda, j, linearDamping=0, angularDamping=0)
+        #create a constraint to keep the fingers centered
+        c = self.bullet_client.createConstraint(self.panda,
+                                                9,
+                                                self.panda,
+                                                10,
+                                                jointType=self.bullet_client.JOINT_GEAR,
+                                                jointAxis=[1, 0, 0],
+                                                parentFramePosition=[0, 0, 0],
+                                                childFramePosition=[0, 0, 0])
+        self.bullet_client.changeConstraint(c, gearRatio=-1, erp=0.1, maxForce=50)
+
+        for j in range(self.bullet_client.getNumJoints(self.panda)):
+            self.bullet_client.changeDynamics(self.panda, j, linearDamping=0, angularDamping=0)
 
         sphereRadius = 0.03
         mass = 1
@@ -83,6 +83,10 @@ class pointMassSim():
                                                      rgbaColor=[1, 0, 0, 1])
         init_loc = self.add_centering_offset(np.array([0, 0.1, 0]))
         self.mass = self.bullet_client.createMultiBody(mass, colSphereId, visId, init_loc)
+        collisionFilterGroup = 0
+        collisionFilterMask = 0
+        self.bullet_client.setCollisionFilterGroupMask(self.mass, -1, collisionFilterGroup,
+                                                       collisionFilterMask)
         self.mass_cid = self.bullet_client.createConstraint(self.mass, -1, -1, -1, self.bullet_client.JOINT_FIXED,
                                                             [0, 0, 0], [0, 0, 0],
                                                             init_loc, [0, 0, 0, 1])
@@ -178,23 +182,37 @@ class pointMassSim():
                 self.bullet_client.resetBasePositionAndOrientation(o, pos, orn)
                 index += increment
 
-    def reset_arm(self):
-        self.bullet_client.resetBasePositionAndOrientation(self.mass,
-                                self.add_centering_offset(np.random.uniform(self.env_lower_bound,self.env_upper_bound)), [0,0,0,1])
+    def reset_arm_joints(self, poses):
+        index = 0
+        for j in range(self.bullet_client.getNumJoints(self.panda)):
+            self.bullet_client.changeDynamics(self.panda, j, linearDamping=0, angularDamping=0)
+            info = self.bullet_client.getJointInfo(self.panda, j)
+            # print("info=",info)
+            jointName = info[1]
+            jointType = info[2]
+            if (jointType == self.bullet_client.JOINT_PRISMATIC):
+                self.bullet_client.resetJointState(self.panda, j, poses[index])
+                index = index + 1
+            if (jointType == self.bullet_client.JOINT_REVOLUTE):
+                self.bullet_client.resetJointState(self.panda, j, poses[index])
+                index = index + 1
 
-        # index = 0
-        # for j in range(self.bullet_client.getNumJoints(self.panda)):
-        #     self.bullet_client.changeDynamics(self.panda, j, linearDamping=0, angularDamping=0)
-        #     info = self.bullet_client.getJointInfo(self.panda, j)
-        #     # print("info=",info)
-        #     jointName = info[1]
-        #     jointType = info[2]
-        #     if (jointType == self.bullet_client.JOINT_PRISMATIC):
-        #         self.bullet_client.resetJointState(self.panda, j, jointPositions[index])
-        #         index = index + 1
-        #     if (jointType == self.bullet_client.JOINT_REVOLUTE):
-        #         self.bullet_client.resetJointState(self.panda, j, jointPositions[index])
-        #         index = index + 1
+
+    def reset_arm(self):
+        new_pos = self.add_centering_offset(np.random.uniform(self.env_lower_bound,self.env_upper_bound))
+        self.bullet_client.resetBasePositionAndOrientation(self.mass,
+                                new_pos, [0,0,0,1])
+        orn = self.bullet_client.getQuaternionFromEuler([math.pi / 2., 0., 0.])
+
+
+
+        self.reset_arm_joints(jointPositions) # put it into a good init for IK
+        jointPoses = self.bullet_client.calculateInverseKinematics(self.panda, pandaEndEffectorIndex, new_pos, orn, ll,
+                                                                   ul,
+                                                                   jr, rp, maxNumIterations=20)
+        self.reset_arm_joints(jointPoses)
+
+
 
     def reset(self):
         self.reset_goal_pos()
@@ -204,13 +222,13 @@ class pointMassSim():
     def calc_actor_state(self):
         # state = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)
         # pos, orn, pos_vel, orn_vel = state[0], state[1], state[-2], state[-1]
-        # gripper_state = [self.bullet_client.getJointState(self.panda, 9)[0]]
+        gripper_state = [self.bullet_client.getJointState(self.panda, 9)[0]]
         pos = self.bullet_client.getBasePositionAndOrientation(self.mass)[0]
         vel = self.bullet_client.getBaseVelocity(self.mass)[0]
         # return {'pos': self.subtract_centering_offset(pos), 'orn': orn, 'pos_vel': pos_vel, 'orn_vel': orn_vel,
         #         'gripper': gripper_state}
         return {'pos': self.subtract_centering_offset(pos), 'orn': 'nah', 'pos_vel': vel, 'orn_vel': 'nah',
-                'gripper': np.array([0.04])}
+                'gripper': gripper_state}
 
 
     def calc_environment_state(self):
@@ -276,19 +294,19 @@ class pointMassSim():
                                                          force=10)
 
     def step(self, action):
-        # pos = action[0:3]
-        # if self.use_orientation:
-        #     orn = action[3:7]
-        # else:
-        #     orn = self.bullet_client.getQuaternionFromEuler([math.pi / 2., 0., 0.])
-        # gripper = action[-1]
-        # self.goto(pos, orn, gripper)
         action = action[0:3]
         current_pos = self.subtract_centering_offset(self.bullet_client.getBasePositionAndOrientation(self.mass)[0])
 
         new_pos = current_pos + action
-        new_pos = self.add_centering_offset(np.clip(new_pos, self.env_lower_bound, self.env_upper_bound))
-        self.bullet_client.changeConstraint(self.mass_cid, new_pos, maxForce=100)
+
+        new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
+        if self.use_orientation:
+            orn = action[3:7]
+        else:
+            orn = self.bullet_client.getQuaternionFromEuler([math.pi / 2., 0., 0.])
+        gripper = action[-1]
+        self.goto(new_pos, orn, gripper)
+        self.bullet_client.changeConstraint(self.mass_cid, self.add_centering_offset(new_pos), maxForce=100)
 
 
 

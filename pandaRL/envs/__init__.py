@@ -1,2 +1,4 @@
 from pandaRL.envs.environments import pandaReach
-from pandaRL.envs.pointMass3DTest import pointMassEnv
+from pandaRL.envs.environments import pandaReach2D
+from pandaRL.envs.environments import pandaPush
+from pandaRL.envs.environments import pointMassEnv

@@ -1,5 +1,5 @@
 import numpy as np
-
+import os
 def nothing_scene(bullet_client, offset, flags):
 
     return []
@@ -16,7 +16,7 @@ def push_scene(bullet_client, offset, flags):
     default_scene(bullet_client, offset, flags)
     legos = []
     legos.append(
-        bullet_client.loadURDF("lego/lego.urdf", np.array([0.1, 0.3, -0.5]) + offset, flags=flags))
+        bullet_client.loadURDF(os.path.dirname(os.path.abspath(__file__)) + "/lego/lego.urdf", np.array([0.1, 0.3, -0.5]) + offset, flags=flags))
 
     return legos
 

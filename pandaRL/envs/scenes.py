@@ -4,9 +4,13 @@ def nothing_scene(bullet_client, offset, flags):
 
     return []
 def default_scene(bullet_client, offset, flags):
-
-    bullet_client.loadURDF("tray/traybox.urdf", [0 + offset[0], -0.1 + offset[1], -0.6 + offset[2]],
-                                [-0.5, -0.5, -0.5, 0.5], flags=flags)
+    plane_extent = 2
+    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[plane_extent, 0.0001, plane_extent])
+    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[plane_extent, 0.0001, plane_extent], rgbaColor=[1, 1, 1, 1])
+    plane = bullet_client.createMultiBody(0, colcubeId, visplaneId, [0, -0.07, -0.6])
+    
+    # bullet_client.loadURDF("tray/traybox.urdf", [0 + offset[0], -0.1 + offset[1], -0.6 + offset[2]],
+    #                             [-0.5, -0.5, -0.5, 0.5], flags=flags)
 
 
     return []
@@ -15,8 +19,14 @@ def default_scene(bullet_client, offset, flags):
 def push_scene(bullet_client, offset, flags):
     default_scene(bullet_client, offset, flags)
     legos = []
-    legos.append(
-        bullet_client.loadURDF(os.path.dirname(os.path.abspath(__file__)) + "/lego/lego.urdf", np.array([0.1, 0.3, -0.5]) + offset, flags=flags))
+    side = 0.025
+    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[side, side, side])
+    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[side, side, side],
+                                                 rgbaColor=[1, 1, 1, 1])
+    block = bullet_client.createMultiBody(0.1, colcubeId, visplaneId, [0, -0.06, -0.6])
+
+    legos.append(block)
+        #bullet_client.loadURDF(os.path.dirname(os.path.abspath(__file__)) + "/lego/lego.urdf", np.array([0.1, 0.3, -0.5]) + offset, flags=flags))
 
     return legos
 

@@ -103,6 +103,8 @@ class pointMassSim():
             self.mass_cid = self.bullet_client.createConstraint(self.mass, -1, -1, -1, self.bullet_client.JOINT_FIXED,
                                                                 [0, 0, 0], [0, 0, 0],
                                                                 init_loc, [0, 0, 0, 1])
+
+            
         self.endEffectorIndex = 11
         self.state = 0
         self.control_dt = 1. / 240.
@@ -178,8 +180,9 @@ class pointMassSim():
                 pos[1] = pos[1] + height_offset  # so they don't collide
                 self.bullet_client.resetBasePositionAndOrientation(o, pos, [-0.707107, 0.0, 0.0, 0.707107])
                 height_offset += 0.03
-            for i in range(0, 10):
+            for i in range(0, 20):
                 self.bullet_client.stepSimulation()
+
         else:
             if self.use_orientation:
                 index = 8
@@ -227,10 +230,10 @@ class pointMassSim():
                                     new_pos, [0,0,0,1])
 
         self.reset_arm_joints(arm, restJointPositions) # put it into a good init for IK
-        jointPoses = self.bullet_client.calculateInverseKinematics(arm, pandaEndEffectorIndex, new_pos, orn, ll,
-                                                                   ul,
-                                                                   jr, rp, maxNumIterations=20)
-        self.reset_arm_joints(arm, jointPoses)
+        # jointPoses = self.bullet_client.calculateInverseKinematics(arm, pandaEndEffectorIndex, new_pos, orn, ll,
+        #                                                            ul,
+        #                                                            jr, rp, maxNumIterations=20)
+        # self.reset_arm_joints(arm, jointPoses)
 
 
 
@@ -460,9 +463,9 @@ class pointMassSim():
         pos, orn = None, None
         if self.state == 1 or self.state == 2 or self.state == 3 or self.state == 4 or self.state == 7:
             # gripper_height = 0.034
-            self.gripper_height = alpha * self.gripper_height + (1. - alpha) * 0.03
+            self.gripper_height = alpha * self.gripper_height + (1. - alpha) * -0.06
             if self.state == 2 or self.state == 3 or self.state == 7:
-                self.gripper_height = alpha * self.gripper_height + (1. - alpha) * 0.2
+                self.gripper_height = alpha * self.gripper_height + (1. - alpha) * 0.1
 
             t = self.t
             self.t += self.control_dt
@@ -596,8 +599,15 @@ class pandaEnv(gym.GoalEnv):
             self.activate_physics_client()
             self.physics_client_active = True
 
-        self.panda.reset()
-        obs = self.panda.calc_state()
+        r = 0
+        while r > -1:
+            # reset again if we init into a satisfied state
+            self.panda.reset()
+            obs = self.panda.calc_state()
+            r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
+            print('resetty', r)
+            if r > -1:
+                print('break and reset')
 
         return obs
 
@@ -714,11 +724,12 @@ class pandaReach(pandaEnv):
 		super().__init__(num_objects=num_objects, use_orientation=False)
 
 class pandaPush(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-0.15, -0.1, -0.15], env_range_high = [0.15, -0.05, 0.15],  goal_range_low=[-0.1, -0.06, -0.1], goal_range_high = [0.1, -0.05, 0.1], use_orientation=False): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high, goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation, fixed_gripper = True)
+	def __init__(self, num_objects = 1, env_range_low = [-0.15, -0.055, -0.15], env_range_high = [0.15, -0.04, 0.15],  goal_range_low=[-0.1, -0.06, -0.1], goal_range_high = [0.1, -0.05, 0.1], use_orientation=False): # recall that y is up
+		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high, goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation)
+
 
 class pandaReach2D(pandaEnv):
-	def __init__(self, num_objects = 0, env_range_low = [-0.2, -0.08, -0.2], env_range_high = [0.2, -0.0, 0.2],  goal_range_low=[-0.2, -0.06, -0.2], goal_range_high = [0.2, -0.05, 0.2], use_orientation=False): # recall that y is up
+	def __init__(self, num_objects = 0, env_range_low = [-0.2, -0.07, -0.2], env_range_high = [0.2, 0.0, 0.2],  goal_range_low=[-0.2, -0.06, -0.2], goal_range_high = [0.2, -0.05, 0.2], use_orientation=False): # recall that y is up
 		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high, goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation)
 
 
@@ -740,7 +751,7 @@ def main():
     for i in range(100000):
         panda.reset()
         #panda.visualise_sub_goal(np.array([0,0,0,0.04]), 'controllable_achieved_goal')
-        for j in range(0, 150):
+        for j in range(0, 5):
 
             action = []
             if state_control:
@@ -749,9 +760,10 @@ def main():
             else:
                 for i in range(0, len(controls)):
                     action.append(panda.p.readUserDebugParameter(i))
-                action = panda.action_space.sample()
+                #action = panda.action_space.sample()
                 obs, r, done, info = panda.step(np.array(action))
-                print(obs['achieved_goal'], obs['desired_goal'], r)
+                #print(obs['achieved_goal'], obs['desired_goal'], r)
+                print(r)
                 time.sleep(0.01)
 
 

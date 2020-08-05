@@ -34,19 +34,21 @@ ul = [7] * pandaNumDofs
 jr = [7] * pandaNumDofs
 # restposes for null space
 restJointPositions = [0.98, 0.458, 0.31, -2.24, -0.30, 2.66, 2.32, 0.02, 0.02]
+arm_z_min = -0.055
 rp = restJointPositions
 
 class pointMassSim():
 
     def __init__(self, bullet_client, offset, load_scene, arm_lower_lim, arm_upper_lim,
         env_lower_bound, env_upper_bound, goal_lower_bound,
-        goal_upper_bound, use_orientation, render_scene, pointMass = False, fixed_gripper = False):
+        goal_upper_bound, obj_lower_bound, obj_upper_bound, use_orientation, return_velocity, render_scene, pointMass = False, fixed_gripper = False):
         self.bullet_client = bullet_client
         self.bullet_client.setPhysicsEngineParameter(solverResidualThreshold=0)
         flags = self.bullet_client.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
-        self.objects = load_scene(self.bullet_client, offset, flags) # Todo: later, put this after the centering offset so that objects are centered around it too.
+        self.objects = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound) # Todo: later, put this after the centering offset so that objects are centered around it too.
         self.num_objects = len(self.objects)
         self.use_orientation = use_orientation
+        self.return_velocity = return_velocity
         self.num_objects = len(self.objects)
         self.num_goals = max(self.num_objects, 1)
         self.pointMass = pointMass
@@ -56,55 +58,65 @@ class pointMassSim():
         self.env_lower_bound = env_lower_bound
         self.goal_upper_bound = goal_upper_bound
         self.goal_lower_bound = goal_lower_bound
+        self.obj_lower_bound = obj_lower_bound
+        self.obj_upper_bound = obj_upper_bound
         self.render_scene = render_scene
 
         self.physics_client_active = 0
         self.movable_goal = False
         self.roving_goal = False
         self.sub_goals = None
-
-
-        self.init_arm_orn = [-0.707107, 0.0, 0.0, 0.707107]  # p.getQuaternionFromEuler([-math.pi/2,math.pi/2,0])
-        self.panda = self.bullet_client.loadURDF("franka_panda/panda.urdf", np.array([0, 0, 0]) + offset, self.init_arm_orn,
-                                                 useFixedBase=True, flags=flags)
+        self.fixed_gripper = fixed_gripper
 
         self.default_arm_orn = self.bullet_client.getQuaternionFromEuler([math.pi / 2., 0., 0.])
-        self.original_offset = offset # exclusively for if we span more arms for visulaising sub goals
-        self.offset = offset + np.array([0, 0.0, -0.6]) # to center the env about the panda gripper location
-        #create a constraint to keep the fingers centered
-        self.fixed_gripper = fixed_gripper
-        c = self.bullet_client.createConstraint(self.panda,
-                                                9,
-                                                self.panda,
-                                                10,
-                                                jointType=self.bullet_client.JOINT_GEAR,
-                                                jointAxis=[1, 0, 0],
-                                                parentFramePosition=[0, 0, 0],
-                                                childFramePosition=[0, 0, 0])
-        self.bullet_client.changeConstraint(c, gearRatio=-1, erp=0.1, maxForce=50)
+        self.init_arm_orn = [-0.707107, 0.0, 0.0, 0.707107]  # p.getQuaternionFromEuler([-math.pi/2,math.pi/2,0])
 
-        for j in range(self.bullet_client.getNumJoints(self.panda)):
-            self.bullet_client.changeDynamics(self.panda, j, linearDamping=0, angularDamping=0)
 
         sphereRadius = 0.03
         mass = 1
         colSphereId = self.bullet_client.createCollisionShape(self.bullet_client.GEOM_SPHERE, radius=sphereRadius)
         visId = self.bullet_client.createVisualShape(self.bullet_client.GEOM_SPHERE, radius=sphereRadius,
                                                      rgbaColor=[1, 0, 0, 1])
+        centering_offset =np.array([0, 0.0, -0.6])
+        self.original_offset = offset  # exclusively for if we span more arms for visulaising sub goals
         if self.pointMass:
+
+            self.offset = offset +  centering_offset # to center the env about the panda gripper location
             init_loc = self.add_centering_offset(np.array([0, 0.1, 0]))
             self.mass = self.bullet_client.createMultiBody(mass, colSphereId, visId, init_loc)
-            collisionFilterGroup = 0
-            collisionFilterMask = 0
-            self.bullet_client.setCollisionFilterGroupMask(self.mass, -1, collisionFilterGroup,
-                                                           collisionFilterMask)
+            # collisionFilterGroup = 0
+            # collisionFilterMask = 0
+            # self.bullet_client.setCollisionFilterGroupMask(self.mass, -1, collisionFilterGroup,
+            #                                                collisionFilterMask)
 
 
             self.mass_cid = self.bullet_client.createConstraint(self.mass, -1, -1, -1, self.bullet_client.JOINT_FIXED,
                                                                 [0, 0, 0], [0, 0, 0],
                                                                 init_loc, [0, 0, 0, 1])
 
-            
+        else:
+            self.panda = self.bullet_client.loadURDF("franka_panda/panda.urdf", np.array([0, 0, 0]) + offset,
+                                                     self.init_arm_orn,
+                                                     useFixedBase=True, flags=flags)
+
+
+
+            self.offset = offset + centering_offset  # to center the env about the panda gripper location
+            # create a constraint to keep the fingers centered
+
+            c = self.bullet_client.createConstraint(self.panda,
+                                                    9,
+                                                    self.panda,
+                                                    10,
+                                                    jointType=self.bullet_client.JOINT_GEAR,
+                                                    jointAxis=[1, 0, 0],
+                                                    parentFramePosition=[0, 0, 0],
+                                                    childFramePosition=[0, 0, 0])
+            self.bullet_client.changeConstraint(c, gearRatio=-1, erp=0.1, maxForce=50)
+
+            for j in range(self.bullet_client.getNumJoints(self.panda)):
+                self.bullet_client.changeDynamics(self.panda, j, linearDamping=0, angularDamping=0)
+
         self.endEffectorIndex = 11
         self.state = 0
         self.control_dt = 1. / 240.
@@ -176,27 +188,31 @@ class pointMassSim():
         if obs is None:
             height_offset = 0.03
             for o in self.objects:
-                pos = self.add_centering_offset(np.random.uniform(self.env_lower_bound, self.env_upper_bound))
+                pos = self.add_centering_offset(np.random.uniform(self.obj_lower_bound, self.obj_upper_bound))
                 pos[1] = pos[1] + height_offset  # so they don't collide
                 self.bullet_client.resetBasePositionAndOrientation(o, pos, [-0.707107, 0.0, 0.0, 0.707107])
                 height_offset += 0.03
-            for i in range(0, 20):
+            for i in range(0, 50):
                 self.bullet_client.stepSimulation()
+            for o in self.objects:
+                if (self.add_centering_offset(self.bullet_client.getBasePositionAndOrientation(o)[0]) > self.env_upper_bound).any():
+                    self.reset_object_pos()
 
         else:
+
             if self.use_orientation:
-                index = 8
-                increment = 7
+                index = 11
+                increment = 10
             else:
-                index = 4
-                increment = 3
+                index = 7
+                increment = 6
             for o in self.objects:
                 pos = obs[index:index + 3]
                 if self.use_orientation:
                     orn = obs[index + 3:index + 7]
                 else:
-                    orn = [0, 0, 0, 1]
-                self.bullet_client.resetBasePositionAndOrientation(o, pos, orn)
+                    orn =  [-0.707107, 0.0, 0.0, 0.707107]
+                self.bullet_client.resetBasePositionAndOrientation(o, self.add_centering_offset(pos), orn)
                 index += increment
 
     def reset_arm_joints(self, arm, poses):
@@ -214,38 +230,55 @@ class pointMassSim():
                 self.bullet_client.resetJointState(arm, j, poses[index])
                 index = index + 1
 
+    def reset_pointMass(self, o = None):
+        if  o is None:
+            new_pos = self.add_centering_offset(np.random.uniform(self.goal_lower_bound,self.goal_upper_bound))
+        else:
+            new_pos = self.add_centering_offset(o[0:3])
+        self.bullet_client.resetBasePositionAndOrientation(self.mass,
+                                                           new_pos, [0, 0, 0, 1])
+        self.bullet_client.changeConstraint(self.mass_cid, new_pos, maxForce=100)
 
-    def reset_arm(self, arm, o = None):
+
+
+
+    def reset_arm(self, arm = None, o = None, from_init=True):
 
         orn = self.default_arm_orn
         if  o is None:
-            new_pos = self.add_centering_offset(np.random.uniform(self.env_lower_bound,self.env_upper_bound))
+            new_pos = self.add_centering_offset(np.random.uniform(self.goal_lower_bound,self.goal_upper_bound))
         else:
             new_pos = self.add_centering_offset(o[0:3])
             if self.use_orientation:
-                orn = o[3:7]
+                if self.return_velocity:
+                    orn = o[6:10] # because both pos and pos_vel are in the state
+                else:
+                    orn = o[3:7]
 
-        if self.pointMass:
-            self.bullet_client.resetBasePositionAndOrientation(self.mass,
-                                    new_pos, [0,0,0,1])
-
-        self.reset_arm_joints(arm, restJointPositions) # put it into a good init for IK
-        # jointPoses = self.bullet_client.calculateInverseKinematics(arm, pandaEndEffectorIndex, new_pos, orn, ll,
-        #                                                            ul,
-        #                                                            jr, rp, maxNumIterations=20)
-        # self.reset_arm_joints(arm, jointPoses)
+        if from_init:
+            self.reset_arm_joints(arm, restJointPositions) # put it into a good init for IK
+        jointPoses = self.bullet_client.calculateInverseKinematics(arm, pandaEndEffectorIndex, new_pos, orn, ll, ul, jr, rp, maxNumIterations=20)
+        self.reset_arm_joints(arm, jointPoses)
 
 
 
     def reset(self, o = None):
         if o is not None:
-            self.reset_goal_pos(o['desired_goal'])
-            self.reset_arm(self.panda, o['observation'])
-            self.reset_object_pos(o['observation'])
+            self.reset_object_pos(o)
+            if self.pointMass:
+                self.reset_pointMass(o)
+            else:
+                self.reset_arm(self.panda, o)
+
+            self.reset_goal_pos()  # o[-self.num_goals*3:])
         else:
-            self.reset_goal_pos()
-            self.reset_arm(self.panda)
             self.reset_object_pos()
+            if self.pointMass:
+                self.reset_pointMass()
+            else:
+                self.reset_arm(self.panda)
+
+            self.reset_goal_pos()
         self.t = 0
 
     def visualise_sub_goal(self, sub_goal, sub_goal_state = 'full_positional_state'): # Todo this does not yet account for if we would like to do subgoals with orientation.
@@ -258,7 +291,7 @@ class pointMassSim():
             self.sub_goals = []
             collisionFilterGroup = 0
             collisionFilterMask = 0
-            if sub_goal_state is 'full_positional_state' or sub_goal_state is 'controllable_achieved_goal':
+            if sub_goal_state == 'full_positional_state' or sub_goal_state == 'controllable_achieved_goal':
                 flags = self.bullet_client.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
                 self.ghost_panda = self.bullet_client.loadURDF(
                     os.path.dirname(os.path.abspath(__file__)) + "/franka_panda/ghost_panda.urdf", np.array([0, 0, 0.0]) + self.original_offset,
@@ -268,17 +301,18 @@ class pointMassSim():
                 for i in range(0, self.bullet_client.getNumJoints(self.ghost_panda)):
                     self.bullet_client.setCollisionFilterGroupMask(self.ghost_panda, i, collisionFilterGroup,
                                                                    collisionFilterMask)
+                self.reset_arm_joints(self.ghost_panda, restJointPositions)  # put it into a good init for IK
 
-            if sub_goal_state is 'full_positional_state' or sub_goal_state is 'achieved_goal':
+            if sub_goal_state == 'full_positional_state' or sub_goal_state is 'achieved_goal':
                 sphereRadius = 0.03
                 mass = 1
                 colSphereId = self.bullet_client.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
-                if sub_goal_state is 'full_positional_state':
+                if sub_goal_state == 'full_positional_state':
                     if self.use_orientation:
                         index = 8
                     else:
                         index = 4
-                if sub_goal_state is 'achieved_goal':
+                if sub_goal_state == 'achieved_goal':
                     index = 0
                 for i in range(0, self.num_objects):
                     color = self.obj_colors[i]
@@ -291,31 +325,35 @@ class pointMassSim():
                     index += 3
 
 
-        if sub_goal_state is 'controllable_achieved_goal':
-            self.reset_arm(self.ghost_panda, sub_goal)
-        elif sub_goal_state is 'full_positional_state':
-            self.reset_arm(self.ghost_panda, sub_goal)
+
+        if sub_goal_state == 'controllable_achieved_goal':
+            self.reset_arm(self.ghost_panda, sub_goal, from_init=False)
+        elif sub_goal_state == 'full_positional_state':
+            self.reset_arm(self.ghost_panda, sub_goal, from_init=False)
             if self.use_orientation:
                 index = 8
             else:
                 index = 4
-        elif sub_goal_state is 'achieved_goal':
+        elif sub_goal_state == 'achieved_goal':
             index = 0
-        if sub_goal_state is not 'controllable_achieved_goal':
+        if  sub_goal_state != 'controllable_achieved_goal':
             for i in range(0, self.num_objects):
-                print('----', sub_goal[index:index+3])
+
                 self.bullet_client.resetBasePositionAndOrientation(self.sub_goals[i], self.add_centering_offset(sub_goal[index:index+3]), [0,0,0,1])
                 index += 3
 
 
     def calc_actor_state(self):
-        state = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)
-        pos, orn, vel, orn_vel = state[0], state[1], state[-2], state[-1]
 
-        gripper_state = [self.bullet_client.getJointState(self.panda, 9)[0]]
         if self.pointMass:
             pos = self.bullet_client.getBasePositionAndOrientation(self.mass)[0]
             vel = self.bullet_client.getBaseVelocity(self.mass)[0]
+            orn, orn_vel, gripper_state = None, None, np.array([0.04])
+        else:
+            state = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)
+            pos, orn, vel, orn_vel = state[0], state[1], state[-2], state[-1]
+
+            gripper_state = [self.bullet_client.getJointState(self.panda, 9)[0]]
 
 
         return {'pos': self.subtract_centering_offset(pos), 'orn': orn, 'pos_vel': vel, 'orn_vel': orn_vel,
@@ -326,39 +364,52 @@ class pointMassSim():
         object_states = {}
         for i in range(0, self.num_objects):
             pos, orn = self.bullet_client.getBasePositionAndOrientation(self.objects[i])
-            object_states[i] = {'pos': self.subtract_centering_offset(pos), 'orn': orn}
+            vel = self.bullet_client.getBaseVelocity(self.objects[i])[0]
+            object_states[i] = {'pos': self.subtract_centering_offset(pos), 'orn': orn, 'vel':vel}
 
         return object_states
 
     def calc_state(self):
 
         arm_state = self.calc_actor_state()
+        arm_elements = ['pos']
+        if self.return_velocity:
+            arm_elements.append('pos_vel')
         if self.use_orientation:
-            arm_elements = ['pos', 'pos_vel', 'orn', 'gripper']
-        else:
-            arm_elements = ['pos', 'pos_vel', 'gripper']
+            arm_elements.append('orn')
+        arm_elements.append('gripper')
         state = np.concatenate([np.array(arm_state[i]) for i in arm_elements])
         if self.num_objects > 0:
             env_state = self.calc_environment_state()
-
+            obj_elements = ['pos']
             if self.use_orientation:
-                obj_states = np.concatenate(
-                    [np.concatenate([obj['pos'], obj['orn']]) for (i, obj) in env_state.items()])
-            else:
-                obj_states = np.concatenate([obj['pos'] for (i, obj) in env_state.items()])
+                obj_elements.append('orn')
+            if self.return_velocity:
+                obj_elements.append('vel')
+
+            obj_states = []
+            for i, obj in env_state.items():
+                obj_states.append(np.concatenate([obj[key] for key in obj_elements]))
+
+            obj_states = np.concatenate(obj_states)
+
             state = np.concatenate([state, obj_states])
-            achieved_goal = np.concatenate([obj['pos'] for (i, obj) in env_state.items()]) # todo ag orientation?
-            full_positional_state = np.concatenate([arm_state['pos'], achieved_goal])
+            if self.use_orientation:
+                achieved_goal = np.concatenate([np.concatenate([obj['pos'], obj['orn']]) for (i, obj) in env_state.items()])
+                full_positional_state = np.concatenate([arm_state['pos'], arm_state['orn'], arm_state['gripper'], achieved_goal])
+            else:
+                achieved_goal = np.concatenate([obj['pos'] for (i, obj) in env_state.items()])
+                full_positional_state = np.concatenate([arm_state['pos'], arm_state['gripper'], achieved_goal])
         else:
             achieved_goal = arm_state['pos']
-            full_positional_state = achieved_goal
+            full_positional_state = np.concatenate([arm_state['pos'], arm_state['gripper']])
 
         return_dict = {
             'observation': state.copy().astype('float32'),
             'achieved_goal': achieved_goal.copy().astype('float32'),
             'desired_goal': self.goal.copy().astype('float32'),
             'controllable_achieved_goal': np.concatenate([arm_state['pos'].copy(), arm_state['gripper'].copy()]).astype('float32'),
-            # just the x,y pos of the pointmass, the controllable aspects
+            # just the x,y,z pos of the self, the controllable aspects
             'full_positional_state': full_positional_state.copy().astype('float32')
         }
 
@@ -404,7 +455,9 @@ class pointMassSim():
 
         new_pos = current_pos + shift
 
+
         new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
+        new_pos[1] = max(new_pos[1], arm_z_min) # z min is very important to stop it going through table
         if self.use_orientation:
             orn_shift = np.array(action[3:7])
             current_orn = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)[1]
@@ -417,9 +470,11 @@ class pointMassSim():
             gripper = 0.0
         else:
             gripper = action[-1]
-        self.goto(new_pos, new_orn, gripper)
+
         if self.pointMass:
-            self.bullet_client.changeConstraint(self.mass_cid, self.add_centering_offset(new_pos), maxForce=100)
+            self.bullet_client.changeConstraint(self.mass_cid, self.add_centering_offset(new_pos), maxForce=10)
+        else:
+            self.goto(new_pos, new_orn, gripper)
 
 
     def update_state(self):
@@ -492,7 +547,7 @@ class pointMassSim():
 
 
 
-    def render(self, mode):
+    def render(self, mode='human'):
 
         if (mode == "human"):
             self.render_scene = True
@@ -518,26 +573,28 @@ class pandaEnv(gym.GoalEnv):
         'video.frames_per_second': 60
     }
 
-    def __init__(self, num_objects = 0, env_range_low = [-0.2, -0.1, -0.2], env_range_high = [0.2, 0.1, 0.2], goal_range_low = [-0.2, -0.1, -0.2], goal_range_high = [0.2, 0.1, 0.2],
-                 sparse=True, use_orientation=False, sparse_rew_thresh=0.05, pointMass = False, fixed_gripper = False):
+    def __init__(self, num_objects = 0, env_range_low = [-0.18, -0.05, -0.18], env_range_high = [0.18, 0.15, 0.18], goal_range_low = [-0.18, -0.05, -0.18], goal_range_high = [0.18, 0.05, 0.18],
+                 obj_lower_bound = [-0.18, -0.05, -0.18], obj_upper_bound = [-0.18, -0.05, -0.18], sparse=True, use_orientation=False,
+                 sparse_rew_thresh=0.05, pointMass = False, fixed_gripper = False, return_velocity=True, max_episode_steps=250):
         fps = 240
         self.timeStep = 1. / fps
         self.render_scene = False
         self.physics_client_active = 0
         self.num_objects  = num_objects
         self.use_orientation = use_orientation
+        self.return_velocity = return_velocity
         self.fixed_gripper = fixed_gripper
         self.sparse_reward_threshold = sparse_rew_thresh
         self.num_goals = max(self.num_objects, 1)
 
 
-        obs_dim = 7
+        obs_dim = 8
         self.sparse_rew_thresh = sparse_rew_thresh
-        self._max_episode_steps = 250
+        self._max_episode_steps = max_episode_steps
 
-        obs_dim += 6 * num_objects  # pos and vel of the other pm that we are knocking around.
-        pos_step = 0.03
-        orn_step = 0.05
+        obs_dim += 7 * num_objects  # pos and vel of the other pm that we are knocking around.
+        pos_step = 0.02
+        orn_step = 0.1
         if self.use_orientation:
             high = np.array([pos_step, pos_step, pos_step, orn_step,orn_step,orn_step,orn_step, 0.04])
         else:
@@ -552,6 +609,8 @@ class pandaEnv(gym.GoalEnv):
         self.goal_lower_bound = np.array(goal_range_low)
         #self.goal_lower_bound[1] = 0  # set the y (updown) min to 0.
 
+        self.obj_lower_bound = obj_lower_bound
+        self.obj_upper_bound = obj_upper_bound
 
         if use_orientation:
             self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 1, 0.04])])
@@ -559,23 +618,27 @@ class pandaEnv(gym.GoalEnv):
             arm_upper_obs_lim = np.concatenate(
                 [self.env_upper_bound, np.array([1, 1, 1, 1, 1, 1, 1, 0.04])])  # includes velocity
             arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1, 1, 1, 1, 1, 0.0])])
-            obj_upper_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 1])])
-            obj_lower_lim = np.concatenate([self.env_lower_bound, -np.array([1, 1, 1, 1])])
+            obj_upper_lim = np.concatenate([self.obj_upper_bound, np.ones(7)]) # velocity and orientation
+            obj_lower_lim = np.concatenate([self.obj_lower_bound, -np.ones(7)]) # velocity and orientation
+            obj_upper_positional_lim = np.concatenate([self.env_upper_bound, np.ones(4)])
+            obj_lower_positional_lim = np.concatenate([self.env_lower_bound, -np.ones(4)])
         else:
             self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([0.04])])
             self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([0.0])])
             arm_upper_obs_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 0.04])])  # includes velocity
             arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1, 0.0])])
-            obj_upper_lim = self.env_upper_bound
-            obj_lower_lim = self.env_lower_bound
+            obj_upper_lim = np.concatenate([self.obj_upper_bound, np.ones(3)])
+            obj_lower_lim =  np.concatenate([self.obj_lower_bound, -np.ones(3)])
+            obj_upper_positional_lim = self.env_upper_bound
+            obj_lower_positional_lim = self.env_lower_bound
 
         upper_obs_dim = np.concatenate([arm_upper_obs_lim] + [obj_upper_lim] * self.num_objects)
         lower_obs_dim = np.concatenate([arm_lower_obs_lim] + [obj_lower_lim] * self.num_objects)
         upper_goal_dim = np.concatenate([self.env_upper_bound] * self.num_goals)
         lower_goal_dim = np.concatenate([self.env_lower_bound] * self.num_goals)
 
-        lower_full_positional_state = np.concatenate([self.arm_lower_lim] + [obj_lower_lim] * self.num_objects) # like the obs dim, but without velocity.
-        upper_full_positional_state = np.concatenate([self.arm_upper_lim] + [obj_lower_lim] * self.num_objects)
+        lower_full_positional_state = np.concatenate([self.arm_lower_lim] + [obj_lower_positional_lim] * self.num_objects) # like the obs dim, but without velocity.
+        upper_full_positional_state = np.concatenate([self.arm_upper_lim] + [obj_upper_positional_lim] * self.num_objects)
 
         #self.action_space = spaces.Box(self.arm_lower_lim, self.arm_upper_lim)
 
@@ -593,7 +656,7 @@ class pandaEnv(gym.GoalEnv):
 
 
 
-    def reset(self):
+    def reset(self, o = None):
 
         if not self.physics_client_active:
             self.activate_physics_client()
@@ -602,14 +665,14 @@ class pandaEnv(gym.GoalEnv):
         r = 0
         while r > -1:
             # reset again if we init into a satisfied state
-            self.panda.reset()
+            self.panda.reset(o)
             obs = self.panda.calc_state()
             r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
-            print('resetty', r)
-            if r > -1:
-                print('break and reset')
 
         return obs
+
+    def reset_goal_pos(self, goal):
+        self.panda.reset_goal_pos(goal)
 
     def render(self, mode):
         if (mode == "human"):
@@ -624,7 +687,7 @@ class pandaEnv(gym.GoalEnv):
 
         self.panda.step(action)
 
-        for i in range(0, 20):
+        for i in range(0, 30):
             self.p.stepSimulation()
             # this is out here because the multiprocessing version will step everyone simulataneously.
 
@@ -636,6 +699,13 @@ class pandaEnv(gym.GoalEnv):
         done = False
         success = 0 if r < 0 else 1
         # TODO: Should it be done if we exceed the environment limits to prevent bad data?
+        for i,o in self.panda.calc_environment_state().items():
+
+            if (o['pos'] > self.env_upper_bound).any() or (o['pos'] < self.env_lower_bound).any():
+                print('Bad Init')
+                done = True
+                r = -100
+
         return obs, r, done, {'is_success': success}
 
     def activate_physics_client(self):
@@ -665,7 +735,7 @@ class pandaEnv(gym.GoalEnv):
             scene = complex_scene
         self.panda = pointMassSim(self.p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
                                         self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
-                                        self.goal_upper_bound,  self.use_orientation, self.render_scene, pointMass = self.pointMass, fixed_gripper=self.fixed_gripper)
+                                        self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,  self.use_orientation, self.return_velocity, self.render_scene, pointMass = self.pointMass, fixed_gripper=self.fixed_gripper)
         self.panda.control_dt = self.timeStep
         lookat = [0, 0, 0.0]
         distance = 1.3
@@ -682,26 +752,25 @@ class pandaEnv(gym.GoalEnv):
     def compute_reward(self, achieved_goal, desired_goal):
         return -self.calc_target_distance(achieved_goal,desired_goal)
 
-
     def compute_reward_sparse(self, achieved_goal, desired_goal, info=None):
-        # I know this should be vectorized but cbf atm - my HER doesn't use vector ag and dg. Just need this for baselines
-        # compatability.
-        # This implements a piecewise reward function, for multiobject envs.
+
         initially_vectorized = True
-        dimensions = 3
+        dimension = 3
         if len(achieved_goal.shape) == 1:
             achieved_goal = np.expand_dims(np.array(achieved_goal), axis=0)
             desired_goal = np.expand_dims(np.array(desired_goal), axis=0)
             initially_vectorized = False
+
         reward = np.zeros(len(achieved_goal))
-        for i in range(0, len(achieved_goal)):
-            for g in range(0, len(achieved_goal[i]) // dimensions ): # three for three dimensions
-                g = g * dimensions   # increments of 2
-                current_distance = self.calc_target_distance(achieved_goal[g:g + dimensions ], desired_goal[g:g + dimensions ])
-                if current_distance > self.sparse_reward_threshold:
-                    reward[i] -= 1
-                if current_distance < self.sparse_reward_threshold:
-                    reward[i] -= current_distance # semi sparse reward, rewards centering it exactly!
+        # only compute reward on pos not orn for the moment
+        g_ag = 0 # increments of dimension, then skip 4 for ori
+        g_dg = 0 # incremenets of dimesion
+        for g in range(0, self.num_goals):  # piecewise reward
+            current_distance = np.linalg.norm(achieved_goal[:, g_ag:g_ag + dimension] - desired_goal[:, g_dg:g_dg + dimension],
+                                              axis=1)
+            reward += np.where(current_distance > self.sparse_rew_thresh, -1, -current_distance)
+            g_ag += dimension+ 4 # for ori
+            g_dg += dimension
 
         if not initially_vectorized:
             return reward[0]
@@ -721,26 +790,39 @@ class pointMassEnv(pandaEnv):
 
 class pandaReach(pandaEnv):
 	def __init__(self, num_objects = 0):
-		super().__init__(num_objects=num_objects, use_orientation=False)
+		super().__init__(num_objects=num_objects, use_orientation=True)
 
 class pandaPush(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-0.15, -0.055, -0.15], env_range_high = [0.15, -0.04, 0.15],  goal_range_low=[-0.1, -0.06, -0.1], goal_range_high = [0.1, -0.05, 0.1], use_orientation=False): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high, goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation)
+	def __init__(self, num_objects = 1, env_range_low = [-0.18, -0.055, -0.18], env_range_high = [0.18, -0.04, 0.18],  goal_range_low=[-0.1, -0.06, -0.1], goal_range_high = [0.1, -0.05, 0.1], use_orientation=False): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = goal_range_low, obj_upper_bound = goal_range_high) # in push restrict the inti positions slightly.
 
+class pandaPick(pandaEnv):
+	def __init__(self, num_objects = 1, env_range_low = [-0.18, -0.055, -0.18], env_range_high = [0.18, 0.2, 0.18],  goal_range_low=[-0.18, 0.0, -0.18], goal_range_high = [0.18, 0.1, 0.18], use_orientation=False): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = goal_range_low, obj_upper_bound = goal_range_high)
 
 class pandaReach2D(pandaEnv):
-	def __init__(self, num_objects = 0, env_range_low = [-0.2, -0.07, -0.2], env_range_high = [0.2, 0.0, 0.2],  goal_range_low=[-0.2, -0.06, -0.2], goal_range_high = [0.2, -0.05, 0.2], use_orientation=False): # recall that y is up
+	def __init__(self, num_objects = 0, env_range_low = [-0.18, -0.07, -0.18], env_range_high = [0.18, 0.0, 0.18],  goal_range_low=[-0.18, -0.06, -0.18], goal_range_high = [0.18, -0.05, 0.18], use_orientation=False): # recall that y is up
 		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high, goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation)
 
+class pandaPlay(pandaEnv):
+	def __init__(self, num_objects = 2, env_range_low = [-0.3, -0.1, -0.3], env_range_high = [0.3, 0.4, 0.3],
+                 goal_range_low=[-0.18, 0.0, -0.18], goal_range_high = [0.18, 0.1, 0.18], use_orientation=True): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = goal_range_low, obj_upper_bound = goal_range_high, return_velocity=False, max_episode_steps=None)
 
 def main():
-    panda = pandaPush()
+    panda = pandaPick()
     controls = []
 
     panda.render(mode='human')
     panda.reset()
     controls.append(panda.p.addUserDebugParameter("X", panda.action_space.low[0], panda.action_space.high[0], 0))
-    controls.append(panda.p.addUserDebugParameter("Y", panda.action_space.low[1], panda.action_space.high[1], 0.02))
+    controls.append(panda.p.addUserDebugParameter("Y", panda.action_space.low[1], panda.action_space.high[1], 0.00))
     controls.append(panda.p.addUserDebugParameter("Z", panda.action_space.low[2], panda.action_space.high[2], 0))
     controls.append(panda.p.addUserDebugParameter("grip", panda.action_space.low[3], panda.action_space.high[3], 0))
     state_control = False #True
@@ -751,7 +833,7 @@ def main():
     for i in range(100000):
         panda.reset()
         #panda.visualise_sub_goal(np.array([0,0,0,0.04]), 'controllable_achieved_goal')
-        for j in range(0, 5):
+        for j in range(0, 150):
 
             action = []
             if state_control:

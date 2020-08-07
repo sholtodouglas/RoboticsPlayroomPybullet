@@ -1,3 +1,5 @@
 /pandaRL.egg-info/*
 /pandaRL/envs/__pycache__/*
 /pandaRL/envs/collected_data/*
+/.idea/*
+/__pycache__/*

@@ -40,7 +40,7 @@ def push_scene(bullet_client, offset, flags, env_range_low, env_range_high):
 
     legos.append(block)
         #bullet_client.loadURDF(os.path.dirname(os.path.abspath(__file__)) + "/lego/lego.urdf", np.array([0.1, 0.3, -0.5]) + offset, flags=flags))
-
+    add_hinge(bullet_client, offset, flags)
     return legos
 
 
@@ -68,4 +68,52 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high):
     legos.append(block)
     legos.append(block2)
 
+
+
     return legos
+
+
+def add_hinge(bullet_client, offset, flags):
+    sphereRadius = 0.05
+    colBoxId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
+                                      halfExtents=[sphereRadius, sphereRadius, sphereRadius])
+
+    mass = 0
+    visualShapeId = -1
+
+    link_Masses = [1]
+    linkCollisionShapeIndices = [colBoxId]
+    linkVisualShapeIndices = [-1]
+    linkPositions = [[0.0,0.0, -0.5]]
+    linkOrientations = [bullet_client.getQuaternionFromEuler([0,0,np.pi/2])]
+    linkInertialFramePositions = [[0, 0, 0]]
+    linkInertialFrameOrientations = [[0, 0, 0, 1]]
+    indices = [0]
+    # jointTypes = [bullet_client.JOINT_REVOLUTE]
+    jointTypes = [bullet_client.JOINT_PRISMATIC]
+    axis = [[0, 0, 1]]
+
+    basePosition = np.array([0, 0, 0])+offset
+    baseOrientation = [0, 0, 0, 1]
+
+    sphereUid = bullet_client.createMultiBody(mass,
+                                  colBoxId,
+                                  visualShapeId,
+                                  basePosition,
+                                  baseOrientation,
+                                  linkMasses=link_Masses,
+                                  linkCollisionShapeIndices=linkCollisionShapeIndices,
+                                  linkVisualShapeIndices=linkVisualShapeIndices,
+                                  linkPositions=linkPositions,
+                                  linkOrientations=linkOrientations,
+                                  linkInertialFramePositions=linkInertialFramePositions,
+                                  linkInertialFrameOrientations=linkInertialFrameOrientations,
+                                  linkParentIndices=indices,
+                                  linkJointTypes=jointTypes,
+                                  linkJointAxis=axis)
+
+    bullet_client.changeDynamics(sphereUid,
+                     -1,
+                     spinningFriction=0.001,
+                     rollingFriction=0.001,
+                     linearDamping=0.0)

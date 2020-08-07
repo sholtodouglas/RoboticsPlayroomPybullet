@@ -6,6 +6,26 @@ register(
 )
 
 register(
+    id='pandaReach2D-v0',
+    entry_point='pandaRL.envs:pandaReach2D',
+)
+
+register(
     id='pointMass3D-v0',
     entry_point='pandaRL.envs:pointMassEnv',
+)
+
+register(
+    id='pandaPush-v0',
+    entry_point='pandaRL.envs:pandaPush',
+)
+
+register(
+    id='pandaPick-v0',
+    entry_point='pandaRL.envs:pandaPick',
+)
+
+register(
+    id='pandaPlay-v0',
+    entry_point='pandaRL.envs:pandaPlay',
 )

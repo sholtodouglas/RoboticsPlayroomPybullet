@@ -593,7 +593,8 @@ class pandaEnv(gym.GoalEnv):
         self._max_episode_steps = max_episode_steps
 
         obs_dim += 7 * num_objects  # pos and vel of the other pm that we are knocking around.
-        pos_step = 0.02
+        # TODO actually clip input actions by this amount!!!!!!!!
+        pos_step = 0.015
         orn_step = 0.1
         if self.use_orientation:
             high = np.array([pos_step, pos_step, pos_step, orn_step,orn_step,orn_step,orn_step, 0.04])
@@ -684,7 +685,8 @@ class pandaEnv(gym.GoalEnv):
 
 
     def step(self, action= None):
-
+        #bound the action to within allowable limits
+        action = np.clip(action, self.action_space.low, self.action_space.high)
         self.panda.step(action)
 
         for i in range(0, 30):

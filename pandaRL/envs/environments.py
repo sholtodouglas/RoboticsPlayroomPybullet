@@ -259,12 +259,19 @@ class pointMassSim():
 
     def updateToggles(self):
         for k, v in self.toggles.items():
+            jointstate = self.bullet_client.getJointState(k, 0)[0]
             if v[0] == 'button':
 
-                if self.bullet_client.getJointState(k, 0)[0] < 0.025:
+                if jointstate < 0.025:
                     self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1,0,0,1])
                 else:
                     self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1, 1, 1, 1])
+            if v[0] == 'dial':
+                if dial_to_0_1_range(jointstate) < 0.5:
+                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1,0,0,1])
+                else:
+                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1, 1, 1, 1])
+
 
 
     def runSimulation(self):
@@ -440,7 +447,7 @@ class pointMassSim():
                 data = self.bullet_client.getJointState(self.joints[j], 0)[0]
                 if j == 3:
                     # this is the dial
-                    data = (data % 2*np.pi ) / (2.2*np.pi) # and put it just slightly below -1, 1
+                    data = dial_to_0_1_range(data) # and put it just slightly below -1, 1
                 object_states[i+j] = {'pos':[data], 'orn':[]}
 
         return object_states
@@ -486,6 +493,9 @@ class pointMassSim():
             achieved_goal = arm_state['pos']
             full_positional_state = np.concatenate([arm_state['pos'], arm_state['gripper']])
 
+        # img_arr = p.getCameraImage(200, 200, viewMatrix, projectionMatrix, flags=p.ER_NO_SEGMENTATION_MASK, shadow=0,
+        #                            renderer=p.ER_BULLET_HARDWARE_OPENGL)
+
         return_dict = {
             'observation': state.copy().astype('float32'),
             'achieved_goal': achieved_goal.copy().astype('float32'),
@@ -493,7 +503,8 @@ class pointMassSim():
             'controllable_achieved_goal': np.concatenate([arm_state['pos'].copy(), arm_state['gripper'].copy()]).astype('float32'),
             # just the x,y,z pos of the self, the controllable aspects
             'full_positional_state': full_positional_state.copy().astype('float32'),
-            'joints': arm_state['joints']
+            'joints': arm_state['joints'],
+            'img': None#img_arr[2][:,:,:3] #just the rgb
         }
 
 
@@ -854,8 +865,7 @@ class pandaEnv(gym.GoalEnv):
                 done = True
                 r = -100
 
-        img_arr = p.getCameraImage(200, 200, viewMatrix, projectionMatrix, flags=p.ER_NO_SEGMENTATION_MASK, shadow=0,
-                                   renderer=p.ER_BULLET_HARDWARE_OPENGL)
+
 
         return obs, r, done, {'is_success': success, 'target_poses': targetPoses}
 

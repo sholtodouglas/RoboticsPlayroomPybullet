@@ -67,12 +67,12 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high):
 
     door = add_door(bullet_client)
     drawer = add_drawer(bullet_client)
-    dial = add_dial(bullet_client)
+    dial, toggleGrill = add_dial(bullet_client)
     button, toggleSphere = add_button(bullet_client)
     add_static(bullet_client)
 
 
-    return legos, [door, drawer, button, dial], {button: ('button', toggleSphere)} # return the toggle sphere with it's joint index
+    return legos, [door, drawer, button, dial], {button: ('button', toggleSphere), dial: ('dial', toggleGrill)} # return the toggle sphere with it's joint index
 
 def add_static(bullet_client):
     # TableTop
@@ -271,6 +271,8 @@ def add_drawer(bullet_client, offset=np.array([0, 0, 0]), flags=None):
                                  linearDamping=0.0)
     return sphereUid
 
+def dial_to_0_1_range(data):
+    return (data % 2*np.pi ) / (2.2*np.pi)
 
 def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None):
     sphereRadius = 0.0075
@@ -320,7 +322,19 @@ def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None):
                                  spinningFriction=0.001,
                                  rollingFriction=0.001,
                                  linearDamping=0.0)
-    return sphereUid
+
+    # create a little globe to turn on and off
+    width = 0.07
+    # create a grill to turn on/off
+    colSphereId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
+                                                  halfExtents=[width, width, 0.01])
+    visualShapeId = bullet_client.createVisualShape(bullet_client.GEOM_BOX,
+                                                  halfExtents=[width, width, 0.01],
+                                                    rgbaColor=[1, 1, 1, 1])
+    toggleGrill = bullet_client.createMultiBody(0.0, colSphereId, visualShapeId, [0.2, 0.1, -0.03],
+                                                 baseOrientation)
+
+    return sphereUid, toggleGrill
 
 def add_hinge(bullet_client, offset, flags):
     sphereRadius = 0.05

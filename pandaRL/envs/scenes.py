@@ -68,11 +68,11 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high):
     door = add_door(bullet_client)
     drawer = add_drawer(bullet_client)
     dial = add_dial(bullet_client)
-    button = add_button(bullet_client)
+    button, toggleSphere = add_button(bullet_client)
     add_static(bullet_client)
 
 
-    return legos, [door, drawer, button] # TDODO include dial
+    return legos, [door, drawer, button, dial], {button: ('button', toggleSphere)} # return the toggle sphere with it's joint index
 
 def add_static(bullet_client):
     # TableTop
@@ -171,7 +171,9 @@ def add_button(bullet_client, offset=np.array([0, 0, 0])):
     link_Masses = [0.1]
     linkCollisionShapeIndices = [colBoxId]
     linkVisualShapeIndices = [visualShapeId]
-    linkPositions = [[-0.25, 0.45, 0.70]]
+    x = -0.25
+    y = 0.45
+    linkPositions = [[x,y, 0.70]]
     linkOrientations = [bullet_client.getQuaternionFromEuler([0, 0, 0])]
     linkInertialFramePositions = [[0, 0, 0]]
     linkInertialFrameOrientations = [[0, 0, 0, 1]]
@@ -205,7 +207,17 @@ def add_button(bullet_client, offset=np.array([0, 0, 0])):
                                  rollingFriction=0.001,
                                  linearDamping=0.0)
     bullet_client.setJointMotorControl2(sphereUid, 0, bullet_client.POSITION_CONTROL, targetPosition=0.03, force=1)
-    return sphereUid
+
+    # create a little globe to turn on and off
+    sphereRadius = 0.03
+    colSphereId = bullet_client.createCollisionShape(bullet_client.GEOM_SPHERE, radius=sphereRadius)
+    visualShapeId = bullet_client.createVisualShape(bullet_client.GEOM_SPHERE,
+                                                    radius=sphereRadius,
+                                                    rgbaColor=[1, 1, 1, 1])
+    toggleSphere = bullet_client.createMultiBody(0.0, colSphereId, visualShapeId, [x,y,0.24],
+                                  baseOrientation)
+
+    return sphereUid, toggleSphere
 
 
 def add_drawer(bullet_client, offset=np.array([0, 0, 0]), flags=None):
@@ -275,7 +287,7 @@ def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None):
     link_Masses = [0.1]
     linkCollisionShapeIndices = [wallid]
     linkVisualShapeIndices = [-1]
-    linkPositions = [[0.20, -0.065, 0.0]]
+    linkPositions = [[0.20, -0.055, 0.0]]
     linkOrientations = [bullet_client.getQuaternionFromEuler([np.pi / 2, 0, 0])]
     linkInertialFramePositions = [[0, 0, 0.0]]
     linkInertialFrameOrientations = [[0, 0, 0, 1]]
@@ -284,7 +296,7 @@ def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None):
     # jointTypes = [bullet_client.JOINT_PRISMATIC]
     axis = [[0, 0, 1]]
 
-    basePosition = np.array([0, 0.0, -0.06]) + offset
+    basePosition = np.array([0, 0.0, -0.07]) + offset
     baseOrientation = [0, 0, 0, 1]
 
     sphereUid = bullet_client.createMultiBody(mass,

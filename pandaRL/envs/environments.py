@@ -60,12 +60,12 @@ class pointMassSim():
 
     def __init__(self, bullet_client, offset, load_scene, arm_lower_lim, arm_upper_lim,
         env_lower_bound, env_upper_bound, goal_lower_bound,
-        goal_upper_bound, obj_lower_bound, obj_upper_bound, use_orientation, return_velocity, render_scene, pointMass = False, fixed_gripper = False, play=False):
+        goal_upper_bound, obj_lower_bound, obj_upper_bound, use_orientation, return_velocity, render_scene, pointMass = False, fixed_gripper = False, play=False, show_goal=True):
         self.bullet_client = bullet_client
         self.bullet_client.setPhysicsEngineParameter(solverResidualThreshold=0)
         flags = self.bullet_client.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
         if play:
-            self.objects, self.joints = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound) # Todo: later, put this after the centering offset so that objects are centered around it too.
+            self.objects, self.joints, self.toggles = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound) # Todo: later, put this after the centering offset so that objects are centered around it too.
         else:
             self.objects = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound)
         self.num_objects = len(self.objects)
@@ -163,7 +163,7 @@ class pointMassSim():
         self.finger_target = 0
         self.gripper_height = 0.2
         # create the goal objects
-        self.show_goal = True
+        self.show_goal = show_goal
         alpha = 1
         self.obj_colors = [[0, 1, 0, alpha], [0, 0, 1, alpha]]  # colors for two objects
         if self.render_scene and self.show_goal:
@@ -257,6 +257,21 @@ class pointMassSim():
                 index += increment
 
 
+    def updateToggles(self):
+        for k, v in self.toggles.items():
+            if v[0] == 'button':
+
+                if self.bullet_client.getJointState(k, 0)[0] < 0.025:
+                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1,0,0,1])
+                else:
+                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1, 1, 1, 1])
+
+
+    def runSimulation(self):
+        # also do toggle updating here
+        self.updateToggles() # so its got both in VR and replay out
+        for i in range(0, 12): # 20Hz control
+            self.bullet_client.stepSimulation()
 
 
 
@@ -422,12 +437,16 @@ class pointMassSim():
         i = self.num_objects
         if self.play:
             for j in range(0, len(self.joints)):
-                object_states[i+j] = {'pos':[self.bullet_client.getJointState(self.joints[j], 0)[0]], 'orn':[]}
+                data = self.bullet_client.getJointState(self.joints[j], 0)[0]
+                if j == 3:
+                    # this is the dial
+                    data = (data % 2*np.pi ) / (2.2*np.pi) # and put it just slightly below -1, 1
+                object_states[i+j] = {'pos':[data], 'orn':[]}
 
         return object_states
 
     def calc_state(self):
-
+        self.updateToggles() # good place to update the toggles
         arm_state = self.calc_actor_state()
         arm_elements = ['pos']
         if self.return_velocity:
@@ -473,7 +492,8 @@ class pointMassSim():
             'desired_goal': self.goal.copy().astype('float32'),
             'controllable_achieved_goal': np.concatenate([arm_state['pos'].copy(), arm_state['gripper'].copy()]).astype('float32'),
             # just the x,y,z pos of the self, the controllable aspects
-            'full_positional_state': full_positional_state.copy().astype('float32')
+            'full_positional_state': full_positional_state.copy().astype('float32'),
+            'joints': arm_state['joints']
         }
 
 
@@ -494,12 +514,12 @@ class pointMassSim():
             targetPoses = jointPoses[:index_len]
             # these lower and upper limits were are experimental from moving around the sim. but we don't want them
             # impacting the sim IK
-            # local_ll = np.array([-0.58426888, 0.10672752, -1.96705477, -3.10997761, -0.32496217,
-            #                0.03836633, -1.11879035, 0.]) -0.1
-            # local_ul = np.array([2.48089097, 1.8326, 0.79739335, -0.8531707, 2.97036591,
-            #                2.58578468, 2.67821283, 0.]) + 0.1
-            #
-            # targetPoses = np.clip(np.array(jointPoses[:index_len]), local_ll[:index_len], local_ul[:index_len])
+            local_ll = np.array([-0.36332795, -1.83301728, -2.65733942, -3.04878596, -0.93133401,
+                   1.01175007, -0.66787038, 0.])
+            local_ul = np.array([ 2.96710021,  1.44192887,  0.47807272, -0.5002492,  2.96243465,
+                    3.45266257,  2.40072908,  0.        ])
+
+            targetPoses = np.clip(np.array(jointPoses[:index_len]), local_ll[:index_len], local_ul[:index_len])
 
 
             current_poses = np.array([self.bullet_client.getJointState(self.panda, j)[0] for j in range(index_len)])
@@ -514,18 +534,12 @@ class pointMassSim():
                                                          targetPositions=targetPoses ,
                                                          forces=[5 * 240.]*len(indexes))
 
-            # for j in range(len(targetPoses)):
-            #     self.bullet_client.resetJointState(self.panda, j, targetPoses[j])
-                   
-
-
-
         if gripper is not None:
 
             for i in [9, 10]:
                 self.bullet_client.setJointMotorControl2(self.panda, i, self.bullet_client.POSITION_CONTROL, gripper,
                                                          force=100)
-
+        return targetPoses
 
 
     # action must come in as 7 dimensional
@@ -562,25 +576,30 @@ class pointMassSim():
 
         if self.pointMass:
             self.bullet_client.changeConstraint(self.mass_cid, self.add_centering_offset(new_pos), maxForce=10)
+            return None
         else:
-            self.goto(new_pos, new_orn, gripper)
+            targetPoses = self.goto(new_pos, new_orn, gripper)
+            return targetPoses
 
     # this function is only for fully funcitonal robots, will have ori and gripper
     def absolute_step(self, action):
 
         assert len(action) == 8
         # Still do relative as far as position goes
-        shift = action[0:3]
-        current_pos = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)[0]
-        current_pos = self.subtract_centering_offset(current_pos)
-        new_pos = current_pos + shift
+        # shift =
+        # current_pos = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)[0]
+        # current_pos = self.subtract_centering_offset(current_pos)
+        # new_pos = current_pos + shift
 
+        # all absolute, can do relative predictions on the AI side if we want
+        new_pos = action[0:3]
         new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
         #new_pos[2] = max(new_pos[2], arm_z_min)  # z min is very important to stop it going through table
 
         gripper = action[-1]
         
-        self.goto(new_pos, action[3:7], gripper)
+        targetPoses = self.goto(new_pos, action[3:7], gripper)
+        return targetPoses
 
 
 
@@ -685,7 +704,7 @@ class pandaEnv(gym.GoalEnv):
 
     def __init__(self, num_objects = 0, env_range_low = [-0.18, -0.18,-0.05 ], env_range_high = [0.18, 0.18, 0.15], goal_range_low = [-0.18, -0.18, -0.05], goal_range_high = [0.18, 0.18, 0.05],
                  obj_lower_bound = [-0.18, -0.18, -0.05], obj_upper_bound = [-0.18, -0.18, -0.05], sparse=True, use_orientation=False,
-                 sparse_rew_thresh=0.05, pointMass = False, fixed_gripper = False, return_velocity=True, max_episode_steps=250, play=False, absolute = False):
+                 sparse_rew_thresh=0.05, pointMass = False, fixed_gripper = False, return_velocity=True, max_episode_steps=250, play=False, absolute = False, show_goal=True):
         fps = 240
         self.timeStep = 1. / fps
         self.render_scene = False
@@ -698,6 +717,7 @@ class pandaEnv(gym.GoalEnv):
         self.num_goals = max(self.num_objects, 1)
         self.play = play
         self.absolute = absolute
+        self.show_goal = show_goal
 
         obs_dim = 8
         self.sparse_rew_thresh = sparse_rew_thresh
@@ -804,21 +824,20 @@ class pandaEnv(gym.GoalEnv):
     def absolute_command(self, pos, ori):
         ori = p.getQuaternionFromEuler(ori)
         self.panda.goto(pos,ori)
+        self.panda.runSimulation()
 
-        for i in range(0, 30):
-            self.p.stepSimulation()
+
 
 
     def step(self, action= None):
         #bound the action to within allowable limits
         action = np.clip(action, self.action_space.low, self.action_space.high)
         if self.absolute:
-            self.panda.absolute_step(action)
+            targetPoses = self.panda.absolute_step(action)
         else:
-            self.panda.step(action)
+            targetPoses = self.panda.step(action)
 
-        for i in range(0, 30):
-            self.p.stepSimulation()
+        self.panda.runSimulation()
             # this is out here because the multiprocessing version will step everyone simulataneously.
 
         if self.render_scene:
@@ -838,7 +857,7 @@ class pandaEnv(gym.GoalEnv):
         img_arr = p.getCameraImage(200, 200, viewMatrix, projectionMatrix, flags=p.ER_NO_SEGMENTATION_MASK, shadow=0,
                                    renderer=p.ER_BULLET_HARDWARE_OPENGL)
 
-        return obs, r, done, {'is_success': success}
+        return obs, r, done, {'is_success': success, 'target_poses': targetPoses}
 
     def activate_physics_client(self, vr=None):
 
@@ -871,12 +890,34 @@ class pandaEnv(gym.GoalEnv):
         self.panda = pointMassSim(self.p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
                                         self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
                                         self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,  self.use_orientation, self.return_velocity,
-                                         self.render_scene, pointMass = self.pointMass, fixed_gripper=self.fixed_gripper, play=self.play)
+                                         self.render_scene, pointMass = self.pointMass, fixed_gripper=self.fixed_gripper, play=self.play, show_goal = self.show_goal)
         self.panda.control_dt = self.timeStep
         lookat = [0, 0.0, 0.0]
         distance = 0.8
         yaw = 230
         self.p.resetDebugVisualizerCamera(distance, yaw, -130, lookat)
+
+    def vr_activation(self, vr=None):
+        #self.p = bullet_client.BulletClient(connection_mode=p.GUI)
+        self.p = bullet_client.BulletClient(connection_mode=p.SHARED_MEMORY)
+
+        # self.p.setPhysicsEngineParameter(maxNumCmdPer1ms=1000)
+        # self.p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=38, cameraPitch=-22,
+        #                              cameraTargetPosition=[0.35, -0.13, 0])
+        self.p.setAdditionalSearchPath(pd.getDataPath())
+
+        self.p.setTimeStep(self.timeStep)
+        self.p.setGravity(0, 0, -9.8)
+        scene = complex_scene
+        self.panda = pointMassSim(self.p, [0, 0, 0], scene, self.arm_lower_lim, self.arm_upper_lim,
+                                  self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
+                                  self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,
+                                  self.use_orientation, self.return_velocity,
+                                  self.render_scene, pointMass=self.pointMass, fixed_gripper=self.fixed_gripper,
+                                  play=self.play)
+        self.panda.control_dt = self.timeStep
+        self.physics_client_active = True
+
 
 
 
@@ -949,7 +990,7 @@ class pandaPlay(pandaEnv):
                  goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
 		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
                          goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, absolute=True)
+                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, absolute=True, show_goal=False)
 
 
 

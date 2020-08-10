@@ -5,8 +5,13 @@ import pandaRL
 import numpy as np
 import os
 import shutil
+import os 
 
-env = gym.make('pandaPlay-v0')
+try:
+     os.makedirs('collected_data/pick_demos')
+except:
+    pass
+env = gym.make('pandaPick-v0')
 env.render(mode='human')
 env.reset()
 
@@ -70,7 +75,9 @@ demo_count = len(list(os.listdir(base_path)))
 
 for i in range(0,500):
     o = env.reset()
+    
     take_to_pos =  np.random.uniform(env.goal_lower_bound, env.goal_upper_bound)
+    
     env.panda.reset_goal_pos(take_to_pos)
     t = 0
     state_pointer = 0

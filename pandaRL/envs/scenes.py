@@ -57,11 +57,11 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high):
     colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[side*2, side, side])
     visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[side*2, side, side],
                                                  rgbaColor=[0, 0, 1, 1])
-    block = bullet_client.createMultiBody(0.1, colcubeId, visplaneId, [0, -0.06, -0.06])
+    block = bullet_client.createMultiBody(0.3, colcubeId, visplaneId, [0, -0.06, -0.06])
 
     visplaneId2 = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[side*2, side, side],
                                                  rgbaColor=[1, 0, 0, 1])
-    block2 = bullet_client.createMultiBody(0.1, colcubeId, visplaneId2, [-0.6, -0.06, -0.006])
+    block2 = bullet_client.createMultiBody(0.3, colcubeId, visplaneId2, [-0.6, -0.06, -0.006])
     legos.append(block)
     legos.append(block2)
 
@@ -114,7 +114,7 @@ def add_door(bullet_client, offset=np.array([0, 0, 0]), flags=None):
 
     #     wallid = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
     #                                       halfExtents=[sphereRadius*4, sphereRadius/4, sphereRadius*4])
-    wallid = bullet_client.createCollisionShape(bullet_client.GEOM_MESH, fileName=os.path.dirname(os.path.abspath(__file__)) + '/door.obj', meshScale=[0.0015] * 3,
+    wallid = bullet_client.createCollisionShape(bullet_client.GEOM_MESH, fileName=os.path.dirname(os.path.abspath(__file__)) + '/env_meshes/door.obj', meshScale=[0.0015] * 3,
                                         flags=bullet_client.GEOM_FORCE_CONCAVE_TRIMESH)
 
     mass = 0
@@ -227,7 +227,7 @@ def add_drawer(bullet_client, offset=np.array([0, 0, 0]), flags=None):
 
     #     wallid = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
     #                                       halfExtents=[sphereRadius*4, sphereRadius/4, sphereRadius*4])
-    wallid = bullet_client.createCollisionShape(bullet_client.GEOM_MESH, fileName=os.path.dirname(os.path.abspath(__file__)) + '/drawer.obj', meshScale=[0.0015] * 3,
+    wallid = bullet_client.createCollisionShape(bullet_client.GEOM_MESH, fileName=os.path.dirname(os.path.abspath(__file__)) + '/env_meshes/drawer.obj', meshScale=[0.0015] * 3,
                                         flags=bullet_client.GEOM_FORCE_CONCAVE_TRIMESH)
 
     mass = 0

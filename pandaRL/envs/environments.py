@@ -277,10 +277,10 @@ class pointMassSim():
     def runSimulation(self):
         # also do toggle updating here
         self.updateToggles() # so its got both in VR and replay out
-        for i in range(0, 12): # 20Hz control
+        for i in range(0, 24): # 20Hz control
             self.bullet_client.stepSimulation()
 
-
+ 
 
     def reset_arm_joints(self, arm, poses):
         index = 0
@@ -526,9 +526,9 @@ class pointMassSim():
             # these lower and upper limits were are experimental from moving around the sim. but we don't want them
             # impacting the sim IK
             local_ll = np.array([-0.36332795, -1.83301728, -2.65733942, -3.04878596, -0.93133401,
-                   1.01175007, -0.66787038, 0.])
-            local_ul = np.array([ 2.96710021,  1.44192887,  0.47807272, -0.5002492,  2.96243465,
-                    3.45266257,  2.40072908,  0.        ])
+                   1.01175007, -0.66787038, 0.]) -0.2
+            local_ul = np.array([ 2.96710021,  1.44192887,  0.23807272, -0.5002492,  2.96243465,
+                    3.45266257,  2.40072908,  0.        ]) +0.2
 
             targetPoses = np.clip(np.array(jointPoses[:index_len]), local_ll[:index_len], local_ul[:index_len])
 
@@ -716,7 +716,7 @@ class pandaEnv(gym.GoalEnv):
     def __init__(self, num_objects = 0, env_range_low = [-0.18, -0.18,-0.05 ], env_range_high = [0.18, 0.18, 0.15], goal_range_low = [-0.18, -0.18, -0.05], goal_range_high = [0.18, 0.18, 0.05],
                  obj_lower_bound = [-0.18, -0.18, -0.05], obj_upper_bound = [-0.18, -0.18, -0.05], sparse=True, use_orientation=False,
                  sparse_rew_thresh=0.05, pointMass = False, fixed_gripper = False, return_velocity=True, max_episode_steps=250, play=False, absolute = False, show_goal=True):
-        fps = 240
+        fps = 480
         self.timeStep = 1. / fps
         self.render_scene = False
         self.physics_client_active = 0

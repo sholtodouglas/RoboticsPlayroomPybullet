@@ -851,8 +851,8 @@ class pandaEnv(gym.GoalEnv):
         self.panda.runSimulation()
             # this is out here because the multiprocessing version will step everyone simulataneously.
 
-        if self.render_scene:
-            time.sleep(self.timeStep*3)
+        # if self.render_scene:
+        #     time.sleep(self.timeStep*3)
 
         obs = self.panda.calc_state()
         r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])

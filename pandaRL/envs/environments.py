@@ -543,7 +543,7 @@ class pointMassSim():
             #                                              force=5 * 240., maxVelocity=0.5)
             self.bullet_client.setJointMotorControlArray(self.panda, indexes, self.bullet_client.POSITION_CONTROL,
                                                          targetPositions=targetPoses ,
-                                                         forces=[5 * 240.]*len(indexes))
+                                                         forces=[240.]*len(indexes))
 
         if gripper is not None:
 

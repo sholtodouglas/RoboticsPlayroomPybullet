@@ -62,6 +62,8 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high):
     visplaneId2 = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[side*2, side, side],
                                                  rgbaColor=[1, 0, 0, 1])
     block2 = bullet_client.createMultiBody(0.3, colcubeId, visplaneId2, [-0.6, -0.06, -0.006])
+
+    
     legos.append(block)
     legos.append(block2)
 

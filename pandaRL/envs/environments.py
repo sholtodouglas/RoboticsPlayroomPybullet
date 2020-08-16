@@ -495,8 +495,8 @@ class pointMassSim():
             full_positional_state = np.concatenate([arm_state['pos'], arm_state['gripper']])
 
         if self.record_images:
-            img_arr = p.getCameraImage(200, 200, viewMatrix, projectionMatrix, flags=p.ER_NO_SEGMENTATION_MASK, shadow=0,
-                                       renderer=p.ER_BULLET_HARDWARE_OPENGL)[2][:,:,:3] #just the rgb
+            img_arr = self.bullet_client.getCameraImage(200, 200, viewMatrix, projectionMatrix, flags=self.bullet_client.ER_NO_SEGMENTATION_MASK, shadow=0,
+                                       renderer=self.bullet_client.ER_BULLET_HARDWARE_OPENGL)[2][:,:,:3] #just the rgb
         else:
             img_arr = None
 

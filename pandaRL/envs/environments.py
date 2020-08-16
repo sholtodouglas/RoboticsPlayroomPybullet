@@ -92,6 +92,7 @@ class pointMassSim():
         self.default_arm_orn_RPY = [0, math.pi/2, math.pi/2]
         self.default_arm_orn = self.bullet_client.getQuaternionFromEuler(self.default_arm_orn_RPY)
         self.init_arm_orn = p.getQuaternionFromEuler([0,0,math.pi/2])
+        self.record_images = False
 
 
         sphereRadius = 0.03
@@ -235,7 +236,7 @@ class pointMassSim():
             for i in range(0, 50):
                 self.bullet_client.stepSimulation() # let everything fall into place, falling in to piecees...
             for o in self.objects:
-                print(self.env_upper_bound, self.bullet_client.getBasePositionAndOrientation(o)[0])
+                #print(self.env_upper_bound, self.bullet_client.getBasePositionAndOrientation(o)[0])
                 if (self.subtract_centering_offset(self.bullet_client.getBasePositionAndOrientation(o)[0]) > self.env_upper_bound).any():
                     self.reset_object_pos()
 
@@ -493,8 +494,11 @@ class pointMassSim():
             achieved_goal = arm_state['pos']
             full_positional_state = np.concatenate([arm_state['pos'], arm_state['gripper']])
 
-        # img_arr = p.getCameraImage(200, 200, viewMatrix, projectionMatrix, flags=p.ER_NO_SEGMENTATION_MASK, shadow=0,
-        #                            renderer=p.ER_BULLET_HARDWARE_OPENGL)
+        if self.record_images:
+            img_arr = p.getCameraImage(200, 200, viewMatrix, projectionMatrix, flags=p.ER_NO_SEGMENTATION_MASK, shadow=0,
+                                       renderer=p.ER_BULLET_HARDWARE_OPENGL)[2][:,:,:3] #just the rgb
+        else:
+            img_arr = None
 
         return_dict = {
             'observation': state.copy().astype('float32'),
@@ -504,7 +508,7 @@ class pointMassSim():
             # just the x,y,z pos of the self, the controllable aspects
             'full_positional_state': full_positional_state.copy().astype('float32'),
             'joints': arm_state['joints'],
-            'img': None#img_arr[2][:,:,:3] #just the rgb
+            'img': img_arr
         }
 
 
@@ -526,7 +530,8 @@ class pointMassSim():
 
         current_poses = np.array([self.bullet_client.getJointState(self.panda, j)[0] for j in range(index_len)])
         # limit the amount the motors can jump in one timestep
-        inc = np.array([0.03, 0.06, 0.1, 0.1, 0.1, 0.1, 0.1])
+        #inc = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+        inc = np.array([0.1, 0.1, 0.15, 0.15, 0.15, 0.15, 0.15])
         targetPoses = np.clip(targetPoses, current_poses-inc, current_poses+inc)
         # for i in range(pandaNumDofs):
         #     self.bullet_client.setJointMotorControl2(self.panda, i, self.bullet_client.POSITION_CONTROL,
@@ -847,6 +852,8 @@ class pandaEnv(gym.GoalEnv):
             return np.array([])
         if mode == 'rgb_array':
             raise NotImplementedError
+        if mode == 'playback':
+            self.panda.record_images = True
 
     def absolute_command(self, pos, ori):
         ori = p.getQuaternionFromEuler(ori)
@@ -1085,13 +1092,14 @@ def main():
 
             #panda.absolute_command(action[0:3], action[3:6])
             state = panda.panda.calc_actor_state()
-            pos_change = action[0:3] - state['pos']
+            #pos_change = action[0:3] - state['pos']
             # des_ori = panda.panda.default_arm_orn #  np.array(action[3:6])
             des_ori = p.getQuaternionFromEuler(action[3:6])
             # ori_change =  des_ori - np.array(p.getEulerFromQuaternion(np.array(state['orn'])))
             #
-            action = np.concatenate([pos_change, des_ori, [action[6]]])
+            action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
+            print(state['pos'], obs['observation'][-4:])
         time.sleep(0.01)
 
 

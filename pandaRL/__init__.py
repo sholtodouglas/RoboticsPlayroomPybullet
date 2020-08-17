@@ -34,3 +34,8 @@ register(
     id='pandaPlayJoints-v0',
     entry_point='pandaRL.envs:pandaPlayRelJoints',
 )
+
+register(
+    id='ppandaPlayJoints1Obj-v0',
+    entry_point='pandaRL.envs:pandaPlayRelJoints1Obj',
+)

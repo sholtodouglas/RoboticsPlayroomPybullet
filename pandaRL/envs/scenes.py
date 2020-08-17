@@ -41,7 +41,7 @@ def push_scene(bullet_client, offset, flags, env_range_low, env_range_high):
     return legos
 
 
-def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high):
+def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high, num_objects):
     #default_scene(bullet_client, offset, flags, env_range_low, env_range_high)
     #tray_box(bullet_client, offset, flags, env_range_low, env_range_high)
     plane_extent = 2
@@ -57,15 +57,13 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high):
     colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[side*2, side, side])
     visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[side*2, side, side],
                                                  rgbaColor=[0, 0, 1, 1])
-    block = bullet_client.createMultiBody(0.3, colcubeId, visplaneId, [0, -0.06, -0.06])
-
+    
     visplaneId2 = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[side*2, side, side],
                                                  rgbaColor=[1, 0, 0, 1])
-    block2 = bullet_client.createMultiBody(0.3, colcubeId, visplaneId2, [-0.6, -0.06, -0.006])
+
+    viz_ids =[visplaneId, visplaneId2]
 
     
-    legos.append(block)
-    legos.append(block2)
 
     door = add_door(bullet_client)
     drawer = add_drawer(bullet_client)
@@ -73,6 +71,8 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high):
     button, toggleSphere = add_button(bullet_client)
     add_static(bullet_client)
 
+    for b in range(0, num_objects):
+        legos.append(bullet_client.createMultiBody(0.3, colcubeId, viz_ids[b], [-0.6, -0.06, -0.006]))
 
     return legos, [door, drawer, button, dial], {button: ('button', toggleSphere), dial: ('dial', toggleGrill)} # return the toggle sphere with it's joint index
 
@@ -282,7 +282,7 @@ def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None):
                                                   halfExtents=[sphereRadius, sphereRadius, sphereRadius])
 
     wallid = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
-                                                halfExtents=[sphereRadius * 4, sphereRadius / 4, sphereRadius * 4])
+                                                halfExtents=[sphereRadius * 4, sphereRadius *1.5, sphereRadius * 4])
     #  wallid =env.p.createCollisionShape(env.p.GEOM_MESH, fileName='drawer.obj', meshScale=[0.0015]*3, flags=env.p.GEOM_FORCE_CONCAVE_TRIMESH)
 
     mass = 0

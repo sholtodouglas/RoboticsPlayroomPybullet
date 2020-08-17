@@ -60,15 +60,16 @@ class pointMassSim():
 
     def __init__(self, bullet_client, offset, load_scene, arm_lower_lim, arm_upper_lim,
         env_lower_bound, env_upper_bound, goal_lower_bound,
-        goal_upper_bound, obj_lower_bound, obj_upper_bound, use_orientation, return_velocity, render_scene, pointMass = False, fixed_gripper = False, play=False, show_goal=True):
+        goal_upper_bound, obj_lower_bound, obj_upper_bound, use_orientation, return_velocity, render_scene, pointMass = False, fixed_gripper = False, play=False, show_goal=True, num_objects =0 ):
         self.bullet_client = bullet_client
         self.bullet_client.setPhysicsEngineParameter(solverResidualThreshold=0)
         flags = self.bullet_client.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
+        
         if play:
-            self.objects, self.joints, self.toggles = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound) # Todo: later, put this after the centering offset so that objects are centered around it too.
+            self.objects, self.joints, self.toggles = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound, num_objects) # Todo: later, put this after the centering offset so that objects are centered around it too.
         else:
             self.objects = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound)
-        self.num_objects = len(self.objects)
+        self.num_objects = num_objects
         self.use_orientation = use_orientation
         self.return_velocity = return_velocity
         self.num_objects = len(self.objects)
@@ -520,9 +521,14 @@ class pointMassSim():
         targetPoses = jointPoses[:index_len]
         # these lower and upper limits were are experimental from moving around the sim. but we don't want them
         # impacting the sim IK
-        local_ll = np.array([-0.36332795, -1.83301728, -2.65733942, -3.04878596, -0.93133401,
-               1.01175007, -0.66787038, 0.])
-        local_ul = np.array([ 2.96710021,  1.44192887,  0.23807272, -0.5002492,  2.96243465,
+        # local_ll = np.array([-0.36332795, -1.83301728, -2.65733942, -3.04878596, -0.93133401,
+        #        1.01175007, -0.66787038, 0.])
+        # local_ul = np.array([ 2.96710021,  1.44192887,  0.23807272, -0.5002492,  2.96243465,
+        #         3.45266257,  2.40072908,  0.        ])
+
+        local_ll = np.array([-0.6, -2.2, -3.0, -3.04878596, -1,
+               1.5, -1, 0.])
+        local_ul = np.array([ 3,  1.8, 0.5, -0.5002492,  3.,
                 3.45266257,  2.40072908,  0.        ])
 
         targetPoses = np.clip(np.array(jointPoses[:index_len]), local_ll[:index_len], local_ul[:index_len])
@@ -531,7 +537,7 @@ class pointMassSim():
         current_poses = np.array([self.bullet_client.getJointState(self.panda, j)[0] for j in range(index_len)])
         # limit the amount the motors can jump in one timestep
         #inc = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
-        inc = np.array([0.1, 0.1, 0.15, 0.15, 0.15, 0.15, 0.15])
+        inc = np.array([0.1, 0.1, 0.2, 0.2, 0.2, 0.2, 0.2])
         targetPoses = np.clip(targetPoses, current_poses-inc, current_poses+inc)
         # for i in range(pandaNumDofs):
         #     self.bullet_client.setJointMotorControl2(self.panda, i, self.bullet_client.POSITION_CONTROL,
@@ -916,16 +922,17 @@ class pandaEnv(gym.GoalEnv):
         self.p.setTimeStep(self.timeStep)
         self.p.setGravity(0, 0, -9.8)
 
-        if self.num_objects == 0 :
-            scene = default_scene
-        elif self.num_objects == 1:
-            scene = push_scene
-        elif self.num_objects == 2:
+        if self.play:
             scene = complex_scene
+        else:
+            if self.num_objects == 0 :
+                scene = default_scene
+            elif self.num_objects == 1:
+                scene = push_scene
         self.panda = pointMassSim(self.p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
                                         self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
                                         self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,  self.use_orientation, self.return_velocity,
-                                         self.render_scene, pointMass = self.pointMass, fixed_gripper=self.fixed_gripper, play=self.play, show_goal = self.show_goal)
+                                         self.render_scene, pointMass = self.pointMass, fixed_gripper=self.fixed_gripper, play=self.play, show_goal = self.show_goal, num_objects=self.num_objects)
         self.panda.control_dt = self.timeStep
         lookat = [0, 0.0, 0.0]
         distance = 0.8
@@ -949,7 +956,7 @@ class pandaEnv(gym.GoalEnv):
                                   self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,
                                   self.use_orientation, self.return_velocity,
                                   self.render_scene, pointMass=self.pointMass, fixed_gripper=self.fixed_gripper,
-                                  play=self.play)
+                                  play=self.play, num_objects=self.num_objects)
         self.panda.control_dt = self.timeStep
         self.physics_client_active = True
 
@@ -1035,6 +1042,12 @@ class pandaPlayRelJoints(pandaEnv):
                          goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
                          obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_joints', show_goal=False)
 
+class pandaPlayRelJoints1Obj(pandaEnv):
+    def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+        super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                        goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                        obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_joints', show_goal=False)
 
 
 
@@ -1061,7 +1074,7 @@ def add_joint_controls(panda):
 
 
 def main():
-    panda = pandaPlay()
+    panda = pandaPlayRelJoints1Obj()
 
 
     panda.render(mode='human')

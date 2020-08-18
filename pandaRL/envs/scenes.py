@@ -64,10 +64,14 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high, n
     viz_ids =[visplaneId, visplaneId2]
 
     
-
+    if num_objects == 2:
+        thickness = 0.25
+    else:
+        thickness = 1.5
+        
     door = add_door(bullet_client)
     drawer = add_drawer(bullet_client)
-    dial, toggleGrill = add_dial(bullet_client)
+    dial, toggleGrill = add_dial(bullet_client, thickness = thickness)
     button, toggleSphere = add_button(bullet_client)
     add_static(bullet_client)
 
@@ -276,13 +280,13 @@ def add_drawer(bullet_client, offset=np.array([0, 0, 0]), flags=None):
 def dial_to_0_1_range(data):
     return (data % 2*np.pi ) / (2.2*np.pi)
 
-def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None):
+def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None, thickness = 1):
     sphereRadius = 0.0075
     colBoxId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
                                                   halfExtents=[sphereRadius, sphereRadius, sphereRadius])
 
     wallid = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
-                                                halfExtents=[sphereRadius * 4, sphereRadius *1.5, sphereRadius * 4])
+                                                halfExtents=[sphereRadius * 4, sphereRadius *thickness, sphereRadius * 4])
     #  wallid =env.p.createCollisionShape(env.p.GEOM_MESH, fileName='drawer.obj', meshScale=[0.0015]*3, flags=env.p.GEOM_FORCE_CONCAVE_TRIMESH)
 
     mass = 0

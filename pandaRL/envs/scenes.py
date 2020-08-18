@@ -76,6 +76,10 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high, n
 
     return legos, [door, drawer, button, dial], {button: ('button', toggleSphere), dial: ('dial', toggleGrill)} # return the toggle sphere with it's joint index
 
+def complex_scene_subgoals(bullet_client, num_objects):
+    pass
+
+
 def add_static(bullet_client):
     # TableTop
     width = 0.35

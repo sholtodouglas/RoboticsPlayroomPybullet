@@ -29,6 +29,10 @@ register(
     id='pandaPlay-v0',
     entry_point='pandaRL.envs:pandaPlay',
 )
+register(
+    id='pandaPlay1Obj-v0',
+    entry_point='pandaRL.envs:pandaPlay1Obj',
+)
 
 register(
     id='pandaPlayJoints-v0',

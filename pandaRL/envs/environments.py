@@ -39,6 +39,7 @@ arm_z_min = -0.055
 rp = restJointPositions
 
 
+
 def gripper_camera(bullet_client, pos, ori):
     # Center of mass position and orientation (of link-7)
     pos = np.array(pos)
@@ -94,7 +95,8 @@ class pointMassSim():
         self.default_arm_orn = self.bullet_client.getQuaternionFromEuler(self.default_arm_orn_RPY)
         self.init_arm_orn = p.getQuaternionFromEuler([0,0,math.pi/2])
         self.record_images = False
-
+        self.last_obs = None  # use for quaternion flipping purpposes (with equivalent quaternions)
+        self.last_ag = None
 
         sphereRadius = 0.03
         mass = 1
@@ -227,6 +229,9 @@ class pointMassSim():
 
     def reset_object_pos(self, obs=None):
         # Todo object velocities to make this properly deterministic
+        if self.play:
+            for i in self.joints:
+                self.bullet_client.resetJointState(i, 0, 0) # reset drawer, button etc
         if obs is None:
             height_offset = 0.03
             for o in self.objects:
@@ -234,7 +239,7 @@ class pointMassSim():
                 pos[2] = pos[2] + height_offset  # so they don't collide
                 self.bullet_client.resetBasePositionAndOrientation(o, pos, [0,0,0,1])
                 height_offset += 0.03
-            for i in range(0, 50):
+            for i in range(0, 100):
                 self.bullet_client.stepSimulation() # let everything fall into place, falling in to piecees...
             for o in self.objects:
                 #print(self.env_upper_bound, self.bullet_client.getBasePositionAndOrientation(o)[0])
@@ -501,6 +506,8 @@ class pointMassSim():
         else:
             img_arr = None
 
+        if self.play:
+            state, achieved_goal = self.quaternion_safe_the_obs(state, achieved_goal)
         return_dict = {
             'observation': state.copy().astype('float32'),
             'achieved_goal': achieved_goal.copy().astype('float32'),
@@ -514,6 +521,38 @@ class pointMassSim():
 
 
         return return_dict
+
+    def quaternion_safe_the_obs(self, obs, ag):
+
+        def flip_quats(vector, last, idxs):
+            for pair in idxs:
+                quat = vector[pair[0]:pair[1]]
+                last_quat = last[pair[0]:pair[1]]
+                print(np.sign(quat) == -np.sign(last_quat))
+                if (np.sign(quat) == -np.sign(last_quat)).all():  # i.e, it is an equivalent quaternion
+                    vector[pair[0]:pair[1]] = - vector[pair[0]:pair[1]]
+            return vector
+
+
+        if self.last_obs is None:
+            pass
+        else:
+            indices = [(3,7), (10,14)]
+            if self.num_objects == 2:
+                indices.append((17,21))
+            obs = flip_quats(obs, self.last_obs, indices)
+            indices =  [(3,7)]
+            if self.num_objects == 2:
+                indices.append((10,14))
+            ag = flip_quats(ag, self.last_ag, indices)
+
+
+        self.last_obs = obs
+        self.last_ag = ag
+        return obs, ag
+
+
+
 
     def goto_joint_poses(self, jointPoses, gripper):
         indexes = [i for i in range(pandaNumDofs)]
@@ -1048,6 +1087,14 @@ class pandaPlayRelJoints1Obj(pandaEnv):
         super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_joints', show_goal=False)
+
+
+class pandaPlay1Obj(pandaEnv):
+	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='absolute', show_goal=False)
 
 
 

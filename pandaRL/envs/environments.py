@@ -528,7 +528,7 @@ class pointMassSim():
             for pair in idxs:
                 quat = vector[pair[0]:pair[1]]
                 last_quat = last[pair[0]:pair[1]]
-                print(np.sign(quat) == -np.sign(last_quat))
+                #print(np.sign(quat) == -np.sign(last_quat))
                 if (np.sign(quat) == -np.sign(last_quat)).all():  # i.e, it is an equivalent quaternion
                     vector[pair[0]:pair[1]] = - vector[pair[0]:pair[1]]
             return vector
@@ -668,18 +668,30 @@ class pointMassSim():
         targetPoses = self.goto(new_pos, action[3:7], gripper)
         return targetPoses
 
+        # this function is only for fully funcitonal robots, will have ori and gripper
+    def relative_quat_step(self, action):
+        assert len(action) == 8
+
+        current_pos = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)[0]
+        current_orn = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)[1]
+        new_pos = action[0:3] + current_pos
+        new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
+        new_orn = action[3:7] + current_orn
+        gripper = action[-1]
+        targetPoses = self.goto(new_pos, new_orn, gripper)
+        return targetPoses
+
         # take a step with an action commanded in joint space # this doesn't yet have first class support judt trying hey
-    def joint_step(self, action):
+    def relative_joint_step(self, action):
         current_poses = np.array([self.bullet_client.getJointState(self.panda, j)[0] for j in range(pandaNumDofs)])
         jointPoses = action[:-1] + current_poses
         gripper = action[-1]
         targetPoses = self.goto_joint_poses(jointPoses, gripper)
         return targetPoses
 
-
-
-
-
+    def absolute_joint_step(self, action):
+        targetPoses = self.goto_joint_poses( action[:-1], action[-1])
+        return targetPoses
 
     def update_state(self):
         keys = self.bullet_client.getKeyboardEvents()
@@ -810,6 +822,10 @@ class pandaEnv(gym.GoalEnv):
                 high = np.array([pos_step, pos_step, pos_step, 0.04])
         elif self.action_type == 'relative_joints':
             high = np.array([1,1,1,1,1,1,1, 0.04])
+        elif self.action_type == 'absolute_joints':
+            high = np.array([6, 6, 6, 6, 6, 6, 6, 0.04])
+        elif self.action_type == 'relative_quat':
+            high = np.array([1, 1, 1, 1, 1, 1, 1, 0.04])
         else:
             if self.use_orientation:
                 high = np.array([pos_step, pos_step, pos_step, orn_step,orn_step,orn_step, 0.04])
@@ -914,7 +930,11 @@ class pandaEnv(gym.GoalEnv):
         if self.action_type == 'absolute':
             targetPoses = self.panda.absolute_step(action)
         elif self.action_type == 'relative_joints':
-            targetPoses = self.panda.joint_step(action)
+            targetPoses = self.panda.relative_joint_step(action)
+        elif self.action_type == 'absolute_joints':
+            targetPoses = self.panda.absolute_joint_step(action)
+        elif self.action_type == 'relative_quat':
+            targetPoses = self.panda.relative_quat_step(action)
         else:
             targetPoses = self.panda.step(action)
 
@@ -1088,6 +1108,13 @@ class pandaPlayRelJoints1Obj(pandaEnv):
                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_joints', show_goal=False)
 
+class pandaPlayAbsJoints1Obj(pandaEnv):
+    def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+        super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                        goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                        obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='absolute_joints', show_goal=False)
+
 
 class pandaPlay1Obj(pandaEnv):
 	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
@@ -1096,7 +1123,12 @@ class pandaPlay1Obj(pandaEnv):
                          goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
                          obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='absolute', show_goal=False)
 
-
+class pandaPlayRel1Obj(pandaEnv):
+	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_quat', show_goal=False)
 
 def add_xyz_rpy_controls(panda):
     controls = []

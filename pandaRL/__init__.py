@@ -51,3 +51,14 @@ register(
     id='pandaPlayAbsJoints1Obj-v0',
     entry_point='pandaRL.envs:pandaPlayAbsJoints1Obj',
 )
+
+register(
+    id='pandaPlayAbsRPY1Obj-v0',
+    entry_point='pandaRL.envs:pandaPlayAbsRPY1Obj',
+)
+
+register(
+    id='pandaPlayRelRPY1Obj-v0',
+    entry_point='pandaRL.envs:pandaPlayRelRPY1Obj',
+)
+

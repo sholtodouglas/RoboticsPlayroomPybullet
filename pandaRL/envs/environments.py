@@ -127,12 +127,7 @@ class pointMassSim():
                 global rp
                 global ll
                 global ul
-
-
-
                 restJointPositions = [0.03, 0.92, -0.02, -2.36, 1.68, 1.28, 0.76, 0.00, 0.0, 0.0]
-
-
                 rp = restJointPositions
                 init_orn = p.getQuaternionFromEuler([0,0,0])
                 self.panda = self.bullet_client.loadURDF(currentdir+"/franka_panda/panda.urdf", np.array([-0.5, 0.0, -0.05]) + offset,
@@ -681,6 +676,27 @@ class pointMassSim():
         targetPoses = self.goto(new_pos, new_orn, gripper)
         return targetPoses
 
+    def absolute_rpy_step(self, action):
+        assert len(action) == 7
+        new_pos = action[0:3]
+        new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
+        new_orn = action[3:6]
+        gripper = action[-1]
+        targetPoses = self.goto(new_pos, self.bullet_client.getQuaternionFromEuler(new_orn), gripper)
+        return targetPoses
+
+    def relative_rpy_step(self, action):
+        assert len(action) == 7
+
+        current_pos = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)[0]
+        current_orn = self.bullet_client.getEulerFromQuaternion(self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)[1])
+        new_pos = action[0:3] + current_pos
+        new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
+        new_orn = action[3:6] + current_orn
+        gripper = action[-1]
+        targetPoses = self.goto(new_pos, self.bullet_client.getQuaternionFromEuler(new_orn), gripper)
+        return targetPoses
+
         # take a step with an action commanded in joint space # this doesn't yet have first class support judt trying hey
     def relative_joint_step(self, action):
         current_poses = np.array([self.bullet_client.getJointState(self.panda, j)[0] for j in range(pandaNumDofs)])
@@ -825,7 +841,11 @@ class pandaEnv(gym.GoalEnv):
         elif self.action_type == 'absolute_joints':
             high = np.array([6, 6, 6, 6, 6, 6, 6, 0.04])
         elif self.action_type == 'relative_quat':
-            high = np.array([1, 1, 1, 1, 1, 1, 1, 0.04])
+            high = np.array([1, 1, 1, 1, 1, 1, 0.04])
+        elif self.action_type == 'absolute_rpy':
+            high = np.array([6, 6, 6, 6, 6, 6, 0.04])
+        elif self.action_type == 'relative_rpy':
+            high = np.array([1,1,1,1,1,1, 0.04])
         else:
             if self.use_orientation:
                 high = np.array([pos_step, pos_step, pos_step, orn_step,orn_step,orn_step, 0.04])
@@ -935,6 +955,10 @@ class pandaEnv(gym.GoalEnv):
             targetPoses = self.panda.absolute_joint_step(action)
         elif self.action_type == 'relative_quat':
             targetPoses = self.panda.relative_quat_step(action)
+        elif self.action_type == 'absolute_rpy':
+            targetPoses = self.panda.absolute_rpy_step(action)
+        elif self.action_type == 'relative_rpy':
+            targetPoses = self.panda.relative_rpy_step(action)
         else:
             targetPoses = self.panda.step(action)
 
@@ -1130,6 +1154,22 @@ class pandaPlayRel1Obj(pandaEnv):
                          goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
                          obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_quat', show_goal=False)
 
+class pandaPlayAbsRPY1Obj(pandaEnv):
+	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='absolute_rpy', show_goal=False)
+
+class pandaPlayRelRPY1Obj(pandaEnv):
+	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_rpy', show_goal=False)
+
+
+
 def add_xyz_rpy_controls(panda):
     controls = []
     orn = panda.panda.default_arm_orn_RPY
@@ -1153,18 +1193,24 @@ def add_joint_controls(panda):
 
 
 def main():
-    panda = pandaPlayRelJoints1Obj()
 
-
-    panda.render(mode='human')
-    panda.reset()
 
 
     joint_control = False #True
     if joint_control:
+        panda = pandaPlayRelJoints1Obj()
+        panda.render(mode='human')
+        panda.reset()
         add_joint_controls(panda)
     else:
+        panda = pandaPlayAbsRPY1Obj()
+        panda.render(mode='human')
+        panda.reset()
         controls = add_xyz_rpy_controls(panda)
+
+    panda.render(mode='human')
+    panda.reset()
+
     for i in range(100000):
 
         if joint_control:
@@ -1186,13 +1232,13 @@ def main():
             state = panda.panda.calc_actor_state()
             #pos_change = action[0:3] - state['pos']
             # des_ori = panda.panda.default_arm_orn #  np.array(action[3:6])
-            des_ori = p.getQuaternionFromEuler(action[3:6])
+            #des_ori = p.getQuaternionFromEuler(action[3:6])
             # ori_change =  des_ori - np.array(p.getEulerFromQuaternion(np.array(state['orn'])))
             #
-            action = np.concatenate([action[0:3], des_ori, [action[6]]])
+            #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
             print(state['pos'], obs['observation'][-4:])
-        time.sleep(0.01)
+        #time.sleep(0.01)
 
 
 # def main():

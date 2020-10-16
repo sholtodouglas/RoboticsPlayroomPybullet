@@ -9,3 +9,5 @@ from pandaRL.envs.environments import pandaPlayRel1Obj
 from pandaRL.envs.environments import pandaPlayRelJoints
 from pandaRL.envs.environments import pandaPlayRelJoints1Obj
 from pandaRL.envs.environments import pandaPlayAbsJoints1Obj
+from pandaRL.envs.environments import pandaPlayAbsRPY1Obj
+from pandaRL.envs.environments import pandaPlayRelRPY1Obj

@@ -14,7 +14,7 @@ class InverseKinematicsSolver():
 
     def __init__(self, base_pos, base_orn, ee_index, default_joints):
         self.p = bullet_client.BulletClient(connection_mode=p.DIRECT)
-        self.ur5 = self.p.loadURDF(currentdir + "/ur_e_description/ur5e.urdf",
+        self.ur5 = self.p.loadURDF(currentdir + "/ur_e_description/ur5e2.urdf",
                                                  base_pos,
                                                  base_orn, useFixedBase=True)
         self.n_joints = self.p.getNumJoints(self.ur5)
@@ -39,9 +39,9 @@ class InverseKinematicsSolver():
     def get_position(self):
         return self.p.getLinkState(self.ur5,self.ee_index)[0:2]
 
-    def calc_angles(self, pos,ori):
+    def calc_angles(self, pos,ori, current_states):
         #always set back to the ideal original state so we don't end up with funny angles.
-        self.set_states(self.default_joints)
+        self.set_states(current_states)
         for i in range(0,3): # converge on the solution
             angles = self.p.calculateInverseKinematics(self.ur5,self.ee_index, pos,ori)[0:6]
             self.set_states(angles)

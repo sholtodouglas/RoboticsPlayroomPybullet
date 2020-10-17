@@ -17,7 +17,7 @@ import math
 from scenes import *
 from shadow_arm import InverseKinematicsSolver
 GUI = False
-arm = 'UR5' # 'Panda'
+arm = 'Panda' # 'Panda'
 viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0.25, 0], distance=1.0, yaw=45, pitch=-45, roll=0,
                                                  upAxisIndex=2)
 
@@ -27,11 +27,13 @@ useNullSpace = 1
 ikSolver = 1
 if arm == 'Panda':
     EndEffectorIndex = 11
+
     restJointPositions = [-0.529, 0.463, 0.265, -2.183, 3.042, 1.984, 0.728, 0.02, 0.02]
     pandaNumDofs = 7
 else:
     EndEffectorIndex = 7
-    restJointPositions = [-0.9572998713387112, -0.8639503472294617,  -1.9830303329043686, -1.8654094162934607, 1.5707874376070445, 0.6135043943552552]
+
+    restJointPositions = [-0.9572998713387112, -0.8639503472294617,  -1.9830303329043686, -1.8654094162934607, 1.5707874376070445, 0.6135043943552552,0]
     pandaNumDofs = 6
 
 
@@ -100,7 +102,7 @@ class pointMassSim():
         self.sub_goals = None
         self.fixed_gripper = fixed_gripper
         if arm == 'Panda':
-            self.default_arm_orn_RPY = [0, math.pi/2, math.pi/2]
+            self.default_arm_orn_RPY = [0, 0,0]
             self.default_arm_orn = self.bullet_client.getQuaternionFromEuler(self.default_arm_orn_RPY)
             self.init_arm_base_orn = p.getQuaternionFromEuler([0,0,math.pi/2])
         elif arm == 'UR5':
@@ -143,10 +145,16 @@ class pointMassSim():
                 global ll
                 global ul
                 if arm == 'Panda':
-                    restJointPositions = [0.03, 0.92, -0.02, -2.36, 1.68, 1.28, 0.76, 0.00, 0.0, 0.0]
+                    restJointPositions = [-0.6, 0.437, 0.217, -2.09, 1.1, 1.4, 1.3, 0.0, 0.0, 0.0]
+                    #restJointPositions = [0.03, 0.92, -0.02, -2.36, 1.68, 1.28, 0.76, 0.00, 0.0, 0.0]
                     rp = restJointPositions
                     self.init_arm_base_pos =  np.array([-0.5, 0.0, -0.05])
                     self.init_arm_base_orn = p.getQuaternionFromEuler([0, 0, 0])
+                elif arm == 'UR5':
+                    restJointPositions =  [-1.50189075, - 1.6291067, - 1.87020409, - 1.21324173, 1.57003561, 0.06970189]
+                    rp = restJointPositions
+                    self.init_arm_base_pos = np.array([0.5, -0.1, 0.0])
+                    self.init_arm_base_orn = p.getQuaternionFromEuler([0, 0, np.pi/2])
 
             else:
                 self.init_arm_base_pos = np.array([0, 0, 0])
@@ -167,12 +175,22 @@ class pointMassSim():
                 self.bullet_client.changeConstraint(c, gearRatio=-1, erp=0.1, maxForce=50)
 
             elif arm == 'UR5':
-                self.init_arm_base_pos = np.array([0.0, -0.5, 0.0])
-                self.init_arm_base_orn = p.getQuaternionFromEuler([0, 0, 0])
-                self.panda = self.bullet_client.loadURDF(currentdir + "/ur_e_description/ur5e.urdf",
+
+                self.panda = self.bullet_client.loadURDF(currentdir + "/ur_e_description/ur5e2.urdf",
                                                          self.init_arm_base_pos + offset,
                                                          self.init_arm_base_orn, useFixedBase=True, flags=flags)
                 self.IKSolver  = InverseKinematicsSolver( self.init_arm_base_pos, self.init_arm_base_orn, EndEffectorIndex, restJointPositions)
+                # c = self.bullet_client.createConstraint(self.panda,
+                #                                         18,
+                #                                         self.panda,
+                #                                         20,
+                #                                         jointType=self.bullet_client.JOINT_GEAR,
+                #                                         jointAxis=[1, 0, 0],
+                #                                         parentFramePosition=[0, 0, 0],
+                #                                         childFramePosition=[0, 0, 0])
+                # self.bullet_client.changeConstraint(c, gearRatio=-1, erp=0.1, maxForce=50)
+
+
             else:
                 raise NotImplementedError
 
@@ -548,6 +566,7 @@ class pointMassSim():
             # just the x,y,z pos of the self, the controllable aspects
             'full_positional_state': full_positional_state.copy().astype('float32'),
             'joints': arm_state['joints'],
+            'velocity': np.concatenate([arm_state['pos_vel'], arm_state['orn_vel']]),
             'img': img_arr
         }
 
@@ -584,28 +603,43 @@ class pointMassSim():
         return obs, ag
 
     # 0 is most open, 1 is least
-    def close_gripper(self, percent):
+    def close_gripper(self, amount):
+        '''
+        0 : open grippeer
+        1 : closed gripper
+        '''
+        if arm == 'Panda':
+            amount = 0.04 - amount/25 # magic numbers, magic numbers everywhere!
+            for i in [9, 10]:
+
+                self.bullet_client.setJointMotorControl2(self.panda, i, self.bullet_client.POSITION_CONTROL, amount,
+                                                         force=100)
+        else:
         # left/ right driver appears to close at 0.03
-        percent *= 25 # as it comes in 0-0.04
-        percent -= 0.2
-        driver = percent * 0.055
+            amount -= 0.2
+            driver = amount * 0.055
 
-        self.bullet_client.setJointMotorControl2(self.panda, 18, self.bullet_client.POSITION_CONTROL, driver,
-                                                 force=100)
-        self.bullet_client.setJointMotorControl2(self.panda, 20, self.bullet_client.POSITION_CONTROL, driver,
-                                                 force=100)
+            self.bullet_client.setJointMotorControl2(self.panda, 18, self.bullet_client.POSITION_CONTROL, driver,
+                                                     force=100)
+            left = self.bullet_client.getJointState(self.panda, 18)[0]
+            self.bullet_client.setJointMotorControl2(self.panda, 20, self.bullet_client.POSITION_CONTROL, left,
+                                                     force=1000)
 
-        spring_link = percent * 0.5
-        self.bullet_client.setJointMotorControl2(self.panda, 12, self.bullet_client.POSITION_CONTROL, spring_link,
-                                                 force=100)
-        self.bullet_client.setJointMotorControl2(self.panda, 15, self.bullet_client.POSITION_CONTROL, spring_link,
-                                                 force=100)
 
-        driver_mimic = percent * 0.8
-        self.bullet_client.setJointMotorControl2(self.panda, 10, self.bullet_client.POSITION_CONTROL, driver_mimic,
-                                                force=100)
-        self.bullet_client.setJointMotorControl2(self.panda, 13, self.bullet_client.POSITION_CONTROL, driver_mimic,
-                                                 force=100)
+            #self.bullet_client.resetJointState(self.panda, 20, left)
+
+            spring_link = amount * 0.5
+            self.bullet_client.setJointMotorControl2(self.panda, 12, self.bullet_client.POSITION_CONTROL, spring_link,
+                                                     force=100)
+            self.bullet_client.setJointMotorControl2(self.panda, 15, self.bullet_client.POSITION_CONTROL, spring_link,
+                                                     force=100)
+
+
+            driver_mimic = amount * 0.8
+            self.bullet_client.setJointMotorControl2(self.panda, 10, self.bullet_client.POSITION_CONTROL, driver_mimic,
+                                                    force=100)
+            self.bullet_client.setJointMotorControl2(self.panda, 13, self.bullet_client.POSITION_CONTROL, driver_mimic,
+                                                     force=100)
 
 
 
@@ -620,12 +654,14 @@ class pointMassSim():
         # local_ul = np.array([ 2.96710021,  1.44192887,  0.23807272, -0.5002492,  2.96243465,
         #         3.45266257,  2.40072908,  0.        ])
         if arm == 'Panda':
-            local_ll = np.array([-0.6, -2.2, -3.0, -3.04878596, -1,1.5, -1, 0.])
-            local_ul = np.array([ 3,  1.8, 0.5, -0.5002492,  3.,3.45266257,  2.40072908,  0.        ])
+            local_ll = np.array([-0.6, -2.2, -3.0, -3.04878596, -np.pi,-np.pi, -np.pi, -np.pi])
+            local_ul = np.array([ 3,  1.8, 0.5, -0.5002492,  3.,3.45266257,  2.40072908,  np.pi        ])
+            # local_ll = np.array([-np.pi * 2] * pandaNumDofs)
+            # local_ul = np.array([np.pi * 2] * pandaNumDofs)
             inc = np.array([0.1, 0.1, 0.2, 0.2, 0.2, 0.2, 0.2])
         elif arm == 'UR5':
-            local_ll = np.array([-np.pi]*6)
-            local_ul = np.array([np.pi] * 6)
+            local_ll = np.array([-np.pi*2]*pandaNumDofs)
+            local_ul = np.array([-0.7,np.pi*2,-0.5,np.pi*2,np.pi*2,np.pi*2])
             inc = np.array([0.1, 0.1, 0.2, 0.2, 0.2, 0.2])
         targetPoses = np.clip(np.array(jointPoses[:index_len]), local_ll[:index_len], local_ul[:index_len])
 
@@ -644,13 +680,7 @@ class pointMassSim():
                                                      forces=[240.]*len(indexes))
 
         if gripper is not None:
-            if arm == 'Panda':
-                for i in [9, 10]:
-                    self.bullet_client.setJointMotorControl2(self.panda, i, self.bullet_client.POSITION_CONTROL, gripper,
-                                                             force=100)
-            elif arm == 'UR5':
-                self.close_gripper(gripper)
-
+            self.close_gripper(gripper)
 
         return targetPoses
 
@@ -666,7 +696,12 @@ class pointMassSim():
                                                                            ul,
                                                                            jr, rp, maxNumIterations=200)
             elif arm == 'UR5':
-                jointPoses = self.IKSolver.calc_angles(pos,orn)
+                current_poses = np.array([self.bullet_client.getJointState(self.panda, j)[0] for j in range(pandaNumDofs)])
+                # print(current_poses)
+                jointPoses = self.IKSolver.calc_angles(pos,orn, current_poses)
+                # jointPoses = self.bullet_client.calculateInverseKinematics(self.panda, EndEffectorIndex, pos, orn, ll,
+                #                                                        ul,
+                #                                                        jr, rp, maxNumIterations=200)
 
             targetPoses = self.goto_joint_poses(jointPoses, gripper)
         return targetPoses
@@ -901,24 +936,24 @@ class pandaEnv(gym.GoalEnv):
         if self.action_type == 'absolute':
             pos_step = 1.0
             if self.use_orientation:
-                high = np.array([pos_step,pos_step,pos_step,1,1,1,1, 0.04]) # use absolute orientations
+                high = np.array([pos_step,pos_step,pos_step,1,1,1,1,1]) # use absolute orientations
             else:
-                high = np.array([pos_step, pos_step, pos_step, 0.04])
+                high = np.array([pos_step, pos_step, pos_step, 1])
         elif self.action_type == 'relative_joints':
-            high = np.array([1,1,1,1,1,1,1, 0.04])
+            high = np.array([1,1,1,1,1,1,1, 1])
         elif self.action_type == 'absolute_joints':
-            high = np.array([6, 6, 6, 6, 6, 6, 6, 0.04])
+            high = np.array([6, 6, 6, 6, 6, 6, 6, 1])
         elif self.action_type == 'relative_quat':
-            high = np.array([1, 1, 1, 1, 1, 1, 0.04])
+            high = np.array([1, 1, 1, 1, 1, 1, 1])
         elif self.action_type == 'absolute_rpy':
-            high = np.array([6, 6, 6, 6, 6, 6, 0.04])
+            high = np.array([6, 6, 6, 6, 6, 6, 1])
         elif self.action_type == 'relative_rpy':
-            high = np.array([1,1,1,1,1,1, 0.04])
+            high = np.array([1,1,1,1,1,1, 1])
         else:
             if self.use_orientation:
-                high = np.array([pos_step, pos_step, pos_step, orn_step,orn_step,orn_step, 0.04])
+                high = np.array([pos_step, pos_step, pos_step, orn_step,orn_step,orn_step, 1])
             else:
-                high = np.array([pos_step, pos_step, pos_step, 0.04])
+                high = np.array([pos_step, pos_step, pos_step, 1])
         self.action_space = spaces.Box(-high, high) # interesting how key this is. Oh because you know what, before it couldn't fucking go down. Duh.
         self.pointMass = pointMass
 
@@ -1043,7 +1078,6 @@ class pandaEnv(gym.GoalEnv):
         for i,o in self.panda.calc_environment_state().items():
 
             if (o['pos'] > self.env_upper_bound).any() or (o['pos'] < self.env_lower_bound).any():
-                print('Outisde bounds')
                 done = True
                 r = -100
 
@@ -1261,7 +1295,7 @@ def add_joint_controls(panda):
 
 
 def main():
-    joint_control = False #True
+    joint_control = True #True
     if joint_control:
         panda = pandaPlayRelJoints1Obj()
         panda.render(mode='human')
@@ -1285,7 +1319,7 @@ def main():
 
             poses[0:len(ul)] = np.clip(poses[0:len(ul)], ll, ul)
             panda.panda.reset_arm_joints(panda.panda.panda, poses)
-            #print(p.getEulerFromQuaternion(panda.panda.calc_actor_state()['orn']))
+            print(p.getEulerFromQuaternion(panda.panda.calc_actor_state()['orn']))
 
         else:
             action = []
@@ -1302,9 +1336,9 @@ def main():
             #
             #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
-            print(p.getEulerFromQuaternion(state['orn']))
+            #print(p.getEulerFromQuaternion(state['orn']))
             panda.visualise_sub_goal(action[0:3]+np.array([0,0.0,0]), sub_goal_state='achieved_goal')
-
+            print(obs['joints'])
             #print(state['pos'], obs['observation'][-4:])
 
         #time.sleep(0.01)

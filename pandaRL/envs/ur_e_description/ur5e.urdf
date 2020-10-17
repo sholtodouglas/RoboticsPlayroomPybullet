@@ -35,7 +35,7 @@
         <mesh filename="meshes/ur5e/visual/shoulder.obj"/>
       </geometry>
       <material name="LightGrey">
-        <color rgba="0.7 0.7 0.7 1.0"/>
+        <color rgba="0.7 0.7 0.7 0.5"/>
       </material>
     </visual>
     <collision>
@@ -216,7 +216,7 @@
      <joint name="grasptarget_hand" type="fixed">
       <parent link="wrist_3_link"/>
       <child link="grasptarget"/>
-      <origin rpy="1.57 0 0" xyz="0 0.25 0.0"/>
+      <origin rpy="1.57 1.57 0" xyz="0 0.25 0.0"/>
     </joint>
   <!-- ROS base_link to UR 'Base' Coordinates transform -->
 <!--  <link name="base"/>-->
@@ -296,6 +296,13 @@
     </inertial>
   </link>
   <link name="robotiq_2f_85_left_driver">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <inertial>
       <origin xyz="-0.000200000000003065 0.0199435877845359 0.0292245259211331" rpy="0 0 0"/>
       <mass value="0.00853198276973456"/>
@@ -421,6 +428,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_right_driver">
+      <contact>
+        <friction_anchor/>
+        <stiffness value="30000.0"/>
+        <damping value="1000.0"/>
+        <spinning_friction value="0.1"/>
+        <lateral_friction value="1.0"/>
+      </contact>
     <!--<inertial>
         <origin xyz="-0.000200000000003065 0.0199435877845359 0.0292245259211331" rpy="0 0 0" />
         <mass value="0.00853198276973456" />

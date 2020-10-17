@@ -243,7 +243,7 @@ def add_drawer(bullet_client, offset=np.array([0, 0, 0]), flags=None):
     mass = 0
     visualShapeId = -1
 
-    link_Masses = [1]
+    link_Masses = [0.1]
     linkCollisionShapeIndices = [wallid]
     linkVisualShapeIndices = [-1]
     linkPositions = [[0.0, 0.0, 0.1]]

@@ -944,7 +944,7 @@ class pandaEnv(gym.GoalEnv):
         elif self.action_type == 'absolute_joints':
             high = np.array([6, 6, 6, 6, 6, 6, 6, 1])
         elif self.action_type == 'relative_quat':
-            high = np.array([1, 1, 1, 1, 1, 1, 1])
+            high = np.array([1, 1, 1, 1, 1, 1,1, 1])
         elif self.action_type == 'absolute_rpy':
             high = np.array([6, 6, 6, 6, 6, 6, 1])
         elif self.action_type == 'relative_rpy':

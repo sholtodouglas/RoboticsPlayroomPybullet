@@ -418,7 +418,7 @@ class pointMassSim():
                 #flags = self.bullet_client.URDF_USE_SELF_COLLISION_EXCLUDE_PARENT
                 if arm == 'Panda':
                     self.ghost_panda = self.bullet_client.loadURDF(
-                        os.path.dirname(os.path.abspath(__file__)) + "/franka_panda/ghost_panda.urdf", np.array([0, 0, 0.0]) + self.original_offset,
+                        os.path.dirname(os.path.abspath(__file__)) + "/franka_panda/ghost_panda.urdf", self.init_arm_base_pos + self.original_offset,
                         self.init_arm_base_orn,  useFixedBase = True, flags=flags)
                 else:
                     raise NotImplementedError
@@ -443,12 +443,25 @@ class pointMassSim():
                 for i in range(0, self.num_objects):
                     color = self.obj_colors[i]
                     color[3] = 0.5 # set alpha to 0.5 for ghostly subgoal appearance
-                    visId = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.03, 0.03, 0.03],
+                    if self.play:
+                        extents = [0.025*2, 0.025, 0.025]
+                    else:
+                        extents = [0.03, 0.03, 0.03]
+
+                    visId = p.createVisualShape(p.GEOM_BOX, halfExtents=extents,
                                                 rgbaColor=color)
                     self.sub_goals.append(self.bullet_client.createMultiBody(mass, colSphereId, visId, sub_goal[index:index+3]))
                     self.bullet_client.setCollisionFilterGroupMask(self.sub_goals[i], -1, collisionFilterGroup,
                                                         collisionFilterMask)
                     index += 3
+
+            if self.play:
+
+                door = add_door(self.bullet_client, ghostly=True)
+                drawer = add_drawer(self.bullet_client, ghostly=True)
+                button, toggleSphere = add_button(self.bullet_client, ghostly=True)
+                dial, toggleGrill = add_dial(self.bullet_client, ghostly=True)  # , thickness = thickness) 1.5
+                self.ghost_joints = [door, drawer, button, dial]
 
 
 
@@ -462,11 +475,30 @@ class pointMassSim():
                 index = 4
         elif sub_goal_state == 'achieved_goal':
             index = 0
+        print(index)
         if  sub_goal_state != 'controllable_achieved_goal':
             for i in range(0, self.num_objects):
+                if self.use_orientation:
+                    self.bullet_client.resetBasePositionAndOrientation(self.sub_goals[i], self.add_centering_offset(
+                        sub_goal[index:index + 3]), sub_goal[index+3:index + 7])
+                    index += 7
+                else:
+                    self.bullet_client.resetBasePositionAndOrientation(self.sub_goals[i], self.add_centering_offset(sub_goal[index:index+3]), [0,0,0,1])
+                    index += 3
+        print(index)
+        if self.play:
+            for i, j in enumerate(self.ghost_joints):
+                print(index+i)
+                self.bullet_client.resetJointState(j, 0, sub_goal[index+i])  # reset drawer, button etc
 
-                self.bullet_client.resetBasePositionAndOrientation(self.sub_goals[i], self.add_centering_offset(sub_goal[index:index+3]), [0,0,0,1])
-                index += 3
+    def delete_sub_goal(self):
+
+        for i in self.ghost_joints:
+            self.bullet_client.removeBody(i)
+        self.bullet_client.removeBody(self.ghost_panda)
+        for i in self.sub_goals:
+            self.bullet_client.removeBody(i)
+        self.sub_goals = None
 
 
     def calc_actor_state(self):

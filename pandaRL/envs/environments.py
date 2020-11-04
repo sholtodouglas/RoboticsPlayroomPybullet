@@ -323,7 +323,8 @@ class pointMassSim():
     def runSimulation(self):
         # also do toggle updating here
         self.updateToggles() # so its got both in VR and replay out
-        for i in range(0, 24): # 20Hz control
+        #for i in range(0, 24): # 20Hz control with 480 timestep
+        for i in range(0, 24):  # 30Hz control at 720
             self.bullet_client.stepSimulation()
 
 
@@ -599,7 +600,8 @@ class pointMassSim():
             'full_positional_state': full_positional_state.copy().astype('float32'),
             'joints': arm_state['joints'],
             'velocity': np.concatenate([arm_state['pos_vel'], arm_state['orn_vel']]),
-            'img': img_arr
+            'img': img_arr,
+            'obs_rpy': np.concatenate([state[0:3], p.getEulerFromQuaternion(state[3:7]), state[7:]]).copy()
         }
 
 
@@ -620,11 +622,11 @@ class pointMassSim():
         if self.last_obs is None:
             pass
         else:
-            indices = [(3,7), (10,14)]
+            indices = [(3,7), (11,14)] # self, and object one xyz q1-4 grip xyz q1-4
             if self.num_objects == 2:
                 indices.append((17,21))
             obs = flip_quats(obs, self.last_obs, indices)
-            indices =  [(3,7)]
+            indices =  [(3,7)] # just the objeect
             if self.num_objects == 2:
                 indices.append((10,14))
             ag = flip_quats(ag, self.last_ag, indices)
@@ -943,7 +945,7 @@ class pandaEnv(gym.GoalEnv):
     def __init__(self, num_objects = 0, env_range_low = [-0.18, -0.18,-0.05 ], env_range_high = [0.18, 0.18, 0.15], goal_range_low = [-0.18, -0.18, -0.05], goal_range_high = [0.18, 0.18, 0.05],
                  obj_lower_bound = [-0.18, -0.18, -0.05], obj_upper_bound = [-0.18, -0.18, -0.05], sparse=True, use_orientation=False,
                  sparse_rew_thresh=0.05, pointMass = False, fixed_gripper = False, return_velocity=True, max_episode_steps=250, play=False, action_type = 'relative', show_goal=True): # action type can be relative, absolute, or joint relative
-        fps = 480
+        fps = 720
         self.timeStep = 1. / fps
         self.render_scene = False
         self.physics_client_active = 0
@@ -1327,7 +1329,7 @@ def add_joint_controls(panda):
 
 
 def main():
-    joint_control = True #True
+    joint_control = False #True
     if joint_control:
         panda = pandaPlayRelJoints1Obj()
         panda.render(mode='human')
@@ -1369,7 +1371,7 @@ def main():
             #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
             #print(p.getEulerFromQuaternion(state['orn']))
-            panda.visualise_sub_goal(action[0:3]+np.array([0,0.0,0]), sub_goal_state='achieved_goal')
+            #panda.visualise_sub_goal(action[0:3]+np.array([0,0.0,0]), sub_goal_state='achieved_goal')
             print(obs['joints'])
             #print(state['pos'], obs['observation'][-4:])
 

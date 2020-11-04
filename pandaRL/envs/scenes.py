@@ -254,7 +254,7 @@ def add_button(bullet_client, offset=np.array([0, 0, 0]), ghostly = False):
 
 
 def add_drawer(bullet_client, offset=np.array([0, 0, 0]), flags=None, ghostly=False):
-    sphereRadius = 0.001
+    sphereRadius = 0.0001
     colBoxId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
                                                   halfExtents=[sphereRadius, sphereRadius, sphereRadius])
 
@@ -324,10 +324,10 @@ def dial_to_0_1_range(data):
     return (data % 2*np.pi ) / (2.2*np.pi)
 
 def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None, thickness = 1.5, ghostly=False):
-    sphereRadius = 0.0075
+    fixedjointRadius = 0.00001
     colBoxId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
-                                                  halfExtents=[sphereRadius, sphereRadius, sphereRadius])
-
+                                                  halfExtents=[fixedjointRadius, fixedjointRadius, fixedjointRadius])
+    sphereRadius = 0.0075
     wallid = bullet_client.createCollisionShape(bullet_client.GEOM_BOX,
                                                 halfExtents=[sphereRadius * 4, sphereRadius *thickness, sphereRadius * 4])
     #  wallid =env.p.createCollisionShape(env.p.GEOM_MESH, fileName='drawer.obj', meshScale=[0.0015]*3, flags=env.p.GEOM_FORCE_CONCAVE_TRIMESH)
@@ -346,7 +346,7 @@ def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None, thickness = 
     link_Masses = [0.1]
     linkCollisionShapeIndices = [wallid]
     linkVisualShapeIndices = [-1]
-    linkPositions = [[0.20, -0.055, 0.0]]
+    linkPositions = [[0.0, -0.055, 0.0]]
     linkOrientations = [bullet_client.getQuaternionFromEuler([np.pi / 2, 0, 0])]
     linkInertialFramePositions = [[0, 0, 0.0]]
     linkInertialFrameOrientations = [[0, 0, 0, 1]]
@@ -355,7 +355,7 @@ def add_dial(bullet_client, offset=np.array([0, 0, 0]), flags=None, thickness = 
     # jointTypes = [bullet_client.JOINT_PRISMATIC]
     axis = [[0, 0, 1]]
 
-    basePosition = np.array([0, 0.0, -0.07]) + offset
+    basePosition = np.array([0.2, 0.0, -0.07]) + offset
     baseOrientation = [0, 0, 0, 1]
 
     sphereUid = bullet_client.createMultiBody(mass,

@@ -324,7 +324,7 @@ class pointMassSim():
         # also do toggle updating here
         self.updateToggles() # so its got both in VR and replay out
         #for i in range(0, 24): # 20Hz control with 480 timestep
-        for i in range(0, 24):  # 30Hz control at 720
+        for i in range(0, 16):  # 30Hz control at 480
             self.bullet_client.stepSimulation()
 
 
@@ -945,7 +945,7 @@ class pandaEnv(gym.GoalEnv):
     def __init__(self, num_objects = 0, env_range_low = [-0.18, -0.18,-0.05 ], env_range_high = [0.18, 0.18, 0.15], goal_range_low = [-0.18, -0.18, -0.05], goal_range_high = [0.18, 0.18, 0.05],
                  obj_lower_bound = [-0.18, -0.18, -0.05], obj_upper_bound = [-0.18, -0.18, -0.05], sparse=True, use_orientation=False,
                  sparse_rew_thresh=0.05, pointMass = False, fixed_gripper = False, return_velocity=True, max_episode_steps=250, play=False, action_type = 'relative', show_goal=True): # action type can be relative, absolute, or joint relative
-        fps = 720
+        fps = 480
         self.timeStep = 1. / fps
         self.render_scene = False
         self.physics_client_active = 0

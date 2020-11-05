@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 
-env = gym.make('pandaPlay-v0')
+env = gym.make('UR5PlayAbsRPY1Obj-v0')
 env.render('human')
 env.reset()
 

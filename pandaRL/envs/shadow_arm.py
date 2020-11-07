@@ -9,7 +9,8 @@ os.sys.path.insert(0, currentdir)
 
 class InverseKinematicsSolver():
     '''
-    A class to do multiple steps of IK using an arm at baseline, which should mean it converges onto one solution and is less finnicky with rpy
+    A class to do multiple steps of IK using an arm at baseline, which means it converges onto one solution and is less finnicky with rpy
+    While this isn't necessary for the panda, for some reason it is with the UR5
     '''
 
     def __init__(self, base_pos, base_orn, ee_index, default_joints):

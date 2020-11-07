@@ -12,3 +12,4 @@ from pandaRL.envs.environments import pandaPlayAbsJoints1Obj
 from pandaRL.envs.environments import pandaPlayAbsRPY1Obj
 from pandaRL.envs.environments import pandaPlayRelRPY1Obj
 from pandaRL.envs.environments import UR5PlayAbsRPY1Obj
+from pandaRL.envs.environments import UR5PlayRelRPY1Obj

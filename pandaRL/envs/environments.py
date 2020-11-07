@@ -62,7 +62,7 @@ class pointMassSim():
         flags = self.bullet_client.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
         
         if play:
-            self.objects, self.joints, self.toggles = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound, num_objects) # Todo: later, put this after the centering offset so that objects are centered around it too.
+            self.objects, self.drawer, self.joints, self.toggles = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound, num_objects) # Todo: later, put this after the centering offset so that objects are centered around it too.
         else:
             self.objects = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound)
         self.num_objects = num_objects
@@ -99,8 +99,10 @@ class pointMassSim():
             self.default_arm_orn = self.bullet_client.getQuaternionFromEuler(self.default_arm_orn_RPY)
             self.init_arm_base_orn = p.getQuaternionFromEuler([0,0,math.pi/2])
             self.endEffectorIndex = 7
-            self.restJointPositions = [-0.9572998713387112, -0.8639503472294617, -1.9830303329043686,
-                                  -1.8654094162934607, 1.5707874376070445, 0.6135043943552552, 0]
+            # this pose makes it very easy for the IK to do the 'underhand' grip, which isn't well solved for
+            # if we take an over hand top down as our default (its very easy for it to flip into an unideal configuration)
+
+            self.restJointPositions = [-1.587, -2.116, -1.587, -2.5, -0.066, 0, 0]
             self.numDofs = 6
 
 
@@ -269,8 +271,11 @@ class pointMassSim():
     def reset_object_pos(self, obs=None):
         # Todo object velocities to make this properly deterministic
         if self.play:
+            self.bullet_client.resetBasePositionAndOrientation(self.drawer['drawer'], self.drawer['defaults']['pos'],
+                                                               self.drawer['defaults']['ori'])
             for i in self.joints:
                 self.bullet_client.resetJointState(i, 0, 0) # reset drawer, button etc
+
         if obs is None:
             height_offset = 0.03
             for o in self.objects:
@@ -313,6 +318,7 @@ class pointMassSim():
                 else:
                     self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1, 1, 1, 1])
             if v[0] == 'dial':
+
                 if dial_to_0_1_range(jointstate) < 0.5:
                     self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1,0,0,1])
                 else:
@@ -457,12 +463,13 @@ class pointMassSim():
                     index += 3
 
             if self.play:
-
+                self.ghost_drawer = add_drawer(self.bullet_client, ghostly=True)
                 door = add_door(self.bullet_client, ghostly=True)
-                drawer = add_drawer(self.bullet_client, ghostly=True)
                 button, toggleSphere = add_button(self.bullet_client, ghostly=True)
                 dial, toggleGrill = add_dial(self.bullet_client, ghostly=True)  # , thickness = thickness) 1.5
-                self.ghost_joints = [door, drawer, button, dial]
+
+                self.ghost_joints = [door, button, dial]
+
 
 
 
@@ -476,8 +483,8 @@ class pointMassSim():
                 index = 4
         elif sub_goal_state == 'achieved_goal':
             index = 0
-        print(index)
-        if  sub_goal_state != 'controllable_achieved_goal':
+
+        if sub_goal_state != 'controllable_achieved_goal':
             for i in range(0, self.num_objects):
                 if self.use_orientation:
                     self.bullet_client.resetBasePositionAndOrientation(self.sub_goals[i], self.add_centering_offset(
@@ -486,8 +493,13 @@ class pointMassSim():
                 else:
                     self.bullet_client.resetBasePositionAndOrientation(self.sub_goals[i], self.add_centering_offset(sub_goal[index:index+3]), [0,0,0,1])
                     index += 3
-        print(index)
+
         if self.play:
+            drawer_pos = self.ghost_drawer['defaults']['pos']
+            drawer_pos[1] = sub_goal[index]
+
+            self.bullet_client.resetBasePositionAndOrientation(self.ghost_drawer['drawer'], drawer_pos, self.ghost_drawer['defaults']['ori'])
+            index += 1
             for i, j in enumerate(self.ghost_joints):
                 print(index+i)
                 self.bullet_client.resetJointState(j, 0, sub_goal[index+i])  # reset drawer, button etc
@@ -496,9 +508,13 @@ class pointMassSim():
 
         for i in self.ghost_joints:
             self.bullet_client.removeBody(i)
-        self.bullet_client.removeBody(self.ghost_panda)
+
         for i in self.sub_goals:
             self.bullet_client.removeBody(i)
+        try:
+            self.bullet_client.removeBody(self.ghost_panda)
+        except:
+            pass
         self.sub_goals = None
 
 
@@ -531,11 +547,14 @@ class pointMassSim():
             object_states[i] = {'pos': self.subtract_centering_offset(pos), 'orn': orn, 'vel':vel}
 
         # get things like hinges, doors, dials, buttons etc
-        i = self.num_objects
+        i += 1
         if self.play:
+            drawer_pos = self.bullet_client.getBasePositionAndOrientation(self.drawer['drawer'])[0][1] # get the y pos
+            object_states[i] = {'pos': [drawer_pos], 'orn':[]}
+            i += 1
             for j in range(0, len(self.joints)):
                 data = self.bullet_client.getJointState(self.joints[j], 0)[0]
-                if j == 3:
+                if j == 2:
                     # this is the dial
                     data = dial_to_0_1_range(data) # and put it just slightly below -1, 1
                 object_states[i+j] = {'pos':[data], 'orn':[]}
@@ -1305,7 +1324,8 @@ class pandaPlayRelRPY1Obj(pandaEnv):
                  goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
 		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
                          goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_rpy', show_goal=False)
+                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
+                          max_episode_steps=None, play=True, action_type='relative_rpy', show_goal=False)
 
 class UR5PlayAbsRPY1Obj(pandaEnv):
 	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
@@ -1314,6 +1334,14 @@ class UR5PlayAbsRPY1Obj(pandaEnv):
                          goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
                          obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
                          max_episode_steps=None, play=True, action_type='absolute_rpy', show_goal=False, arm_type='UR5')
+
+class UR5PlayRelRPY1Obj(pandaEnv):
+	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
+                          max_episode_steps=None, play=True, action_type='relative_rpy', show_goal=False, arm_type='UR5')
 
 def add_xyz_rpy_controls(panda):
     controls = []
@@ -1338,16 +1366,15 @@ def add_joint_controls(panda):
 
 
 def main():
-    joint_control = False #True
+    joint_control = True #Tru
+    panda = UR5PlayAbsRPY1Obj()
+    panda.render(mode='human')
+    panda.reset()
     if joint_control:
-        panda = pandaPlayRelJoints1Obj()
-        panda.render(mode='human')
-        panda.reset()
+
         add_joint_controls(panda)
     else:
-        panda = UR5PlayAbsRPY1Obj()
-        panda.render(mode='human')
-        panda.reset()
+
         controls = add_xyz_rpy_controls(panda)
 
     panda.render(mode='human')
@@ -1360,7 +1387,7 @@ def main():
             for i in range(0, len(panda.panda.restJointPositions)):
                 poses.append(panda.p.readUserDebugParameter(i))
 
-            poses[0:len(ul)] = np.clip(poses[0:len(ul)], ll, ul)
+            poses[0:len(panda.panda.ul)] = np.clip(poses[0:len(panda.panda.ul)], panda.panda.ll, panda.panda.ul)
             panda.panda.reset_arm_joints(panda.panda.panda, poses)
             print(p.getEulerFromQuaternion(panda.panda.calc_actor_state()['orn']))
 
@@ -1379,9 +1406,10 @@ def main():
             #
             #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
+            #print(obs['achieved_goal'][7:])
             #print(p.getEulerFromQuaternion(state['orn']))
-            #panda.visualise_sub_goal(action[0:3]+np.array([0,0.0,0]), sub_goal_state='achieved_goal')
-            print(obs['joints'])
+            panda.visualise_sub_goal(obs['achieved_goal'], sub_goal_state='achieved_goal')
+            #print(obs['joints'])
             #print(state['pos'], obs['observation'][-4:])
 
         #time.sleep(0.01)

@@ -62,3 +62,7 @@ register(
     entry_point='pandaRL.envs:pandaPlayRelRPY1Obj',
 )
 
+register(
+    id='UR5PlayAbsRPY1Obj-v0',
+    entry_point='pandaRL.envs:UR5PlayAbsRPY1Obj',
+)

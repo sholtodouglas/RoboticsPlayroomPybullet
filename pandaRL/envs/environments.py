@@ -424,17 +424,17 @@ class pointMassSim():
                 flags = self.bullet_client.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
                 #flags = self.bullet_client.URDF_USE_SELF_COLLISION_EXCLUDE_PARENT
                 if self.arm_type == 'Panda':
-                    self.ghost_panda = self.bullet_client.loadURDF(
+                    self.ghost_arm = self.bullet_client.loadURDF(
                         os.path.dirname(os.path.abspath(__file__)) + "/franka_panda/ghost_panda.urdf", self.init_arm_base_pos + self.original_offset,
                         self.init_arm_base_orn,  useFixedBase = True, flags=flags)
                 else:
                     raise NotImplementedError
 
                 self.bullet_client.setCollisionFilterGroupMask(self.ghost_panda, -1, collisionFilterGroup,collisionFilterMask)
-                for i in range(0, self.bullet_client.getNumJoints(self.ghost_panda)):
-                    self.bullet_client.setCollisionFilterGroupMask(self.ghost_panda, i, collisionFilterGroup,
+                for i in range(0, self.bullet_client.getNumJoints(self.ghost_arm)):
+                    self.bullet_client.setCollisionFilterGroupMask(self.ghost_arm, i, collisionFilterGroup,
                                                                    collisionFilterMask)
-                self.reset_arm_joints(self.ghost_panda, self.restJointPositions)  # put it into a good init for IK
+                self.reset_arm_joints(self.ghost_arm, self.restJointPositions)  # put it into a good init for IK
 
             if sub_goal_state == 'full_positional_state' or sub_goal_state is 'achieved_goal':
                 sphereRadius = 0.03
@@ -474,9 +474,9 @@ class pointMassSim():
 
 
         if sub_goal_state == 'controllable_achieved_goal':
-            self.reset_arm(self.ghost_panda, sub_goal, from_init=False)
+            self.reset_arm(self.ghost_arm, sub_goal, from_init=False)
         elif sub_goal_state == 'full_positional_state':
-            self.reset_arm(self.ghost_panda, sub_goal, from_init=False)
+            self.reset_arm(self.ghost_arm, sub_goal, from_init=False)
             if self.use_orientation:
                 index = 8
             else:
@@ -508,11 +508,11 @@ class pointMassSim():
 
         for i in self.ghost_joints:
             self.bullet_client.removeBody(i)
-
+        self.bullet_client.removeBody(self.ghost_drawer['drawer'])
         for i in self.sub_goals:
             self.bullet_client.removeBody(i)
         try:
-            self.bullet_client.removeBody(self.ghost_panda)
+            self.bullet_client.removeBody(self.ghost_arm)
         except:
             pass
         self.sub_goals = None
@@ -641,9 +641,9 @@ class pointMassSim():
         if self.last_obs is None:
             pass
         else:
-            indices = [(3,7), (11,14)] # self, and object one xyz q1-4 grip xyz q1-4
+            indices = [(3,7), (11,15)] # self, and object one xyz q1-4 grip xyz q1-4
             if self.num_objects == 2:
-                indices.append((17,21))
+                indices.append((19,23))
             obs = flip_quats(obs, self.last_obs, indices)
             indices =  [(3,7)] # just the objeect
             if self.num_objects == 2:
@@ -1366,7 +1366,7 @@ def add_joint_controls(panda):
 
 
 def main():
-    joint_control = True #Tru
+    joint_control = False #Tru
     panda = UR5PlayAbsRPY1Obj()
     panda.render(mode='human')
     panda.reset()
@@ -1408,6 +1408,8 @@ def main():
             obs, r, done, info = panda.step(np.array(action))
             #print(obs['achieved_goal'][7:])
             #print(p.getEulerFromQuaternion(state['orn']))
+            x = obs['achieved_goal']
+            x[2] += 0.1
             panda.visualise_sub_goal(obs['achieved_goal'], sub_goal_state='achieved_goal')
             #print(obs['joints'])
             #print(state['pos'], obs['observation'][-4:])

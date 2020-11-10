@@ -329,8 +329,8 @@ class pointMassSim():
     def runSimulation(self):
         # also do toggle updating here
         self.updateToggles() # so its got both in VR and replay out
-        #for i in range(0, 24): # 20Hz control with 480 timestep
-        for i in range(0, 16):  # 30Hz control at 480
+        #for i in range(0, 18): # 20Hz control with 480 timestep
+        for i in range(0, 12):  # 25Hz control at 300
             self.bullet_client.stepSimulation()
 
 
@@ -965,7 +965,7 @@ class pandaEnv(gym.GoalEnv):
                  obj_lower_bound = [-0.18, -0.18, -0.05], obj_upper_bound = [-0.18, -0.18, -0.05], sparse=True, use_orientation=False,
                  sparse_rew_thresh=0.05, pointMass = False, fixed_gripper = False, return_velocity=True, max_episode_steps=250, 
                  play=False, action_type = 'relative', show_goal=True, arm_type= 'Panda'): # action type can be relative, absolute, or joint relative
-        fps = 480
+        fps = 300
         self.timeStep = 1. / fps
         self.render_scene = False
         self.physics_client_active = 0
@@ -994,9 +994,15 @@ class pandaEnv(gym.GoalEnv):
             else:
                 high = np.array([pos_step, pos_step, pos_step, 1])
         elif self.action_type == 'relative_joints':
-            high = np.array([1,1,1,1,1,1,1, 1])
+            if self.arm_type == 'UR5':
+                high = np.array([1,1,1,1,1,1, 1])
+            else:
+                high = np.array([1,1,1,1,1,1,1, 1])
         elif self.action_type == 'absolute_joints':
-            high = np.array([6, 6, 6, 6, 6, 6, 6, 1])
+            if self.arm_type == 'UR5':
+                high = np.array([6, 6, 6, 6, 6, 6, 1])
+            else:
+                high = np.array([6, 6, 6, 6, 6, 6, 6, 1])
         elif self.action_type == 'relative_quat':
             high = np.array([1, 1, 1, 1, 1, 1,1, 1])
         elif self.action_type == 'absolute_rpy':
@@ -1342,6 +1348,39 @@ class UR5PlayRelRPY1Obj(pandaEnv):
                          goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
                          obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
                           max_episode_steps=None, play=True, action_type='relative_rpy', show_goal=False, arm_type='UR5')
+
+class UR5PlayRelJoints1Obj(pandaEnv):
+    def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+        super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                        goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                        obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
+                         max_episode_steps=None, play=True, action_type='relative_joints', show_goal=False, arm_type='UR5')
+
+class UR5PlayAbsJoints1Obj(pandaEnv):
+    def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+        super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                        goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                        obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
+                         max_episode_steps=None, play=True, action_type='absolute_joints', show_goal=False, arm_type='UR5')
+
+
+class UR5Play1Obj(pandaEnv):
+	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
+                         max_episode_steps=None, play=True, action_type='absolute', show_goal=False, arm_type='UR5')
+
+class UR5PlayRel1Obj(pandaEnv):
+	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
+		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
+                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
+                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
+                         max_episode_steps=None, play=True, action_type='relative_quat', show_goal=False, arm_type='UR5')
 
 def add_xyz_rpy_controls(panda):
     controls = []

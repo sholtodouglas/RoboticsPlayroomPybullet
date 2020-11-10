@@ -62,6 +62,27 @@ register(
     entry_point='pandaRL.envs:pandaPlayRelRPY1Obj',
 )
 
+
+register(
+    id='UR5Play1Obj-v0',
+    entry_point='pandaRL.envs:UR5Play1Obj',
+)
+
+register(
+    id='UR5PlayRel1Obj-v0',
+    entry_point='pandaRL.envs:UR5PlayRel1Obj',
+)
+
+register(
+    id='UR5PlayRelJoints1Obj-v0',
+    entry_point='pandaRL.envs:UR5PlayRelJoints1Obj',
+)
+
+register(
+    id='UR5PlayAbsJoints1Obj-v0',
+    entry_point='pandaRL.envs:UR5PlayAbsJoints1Obj',
+)
+
 register(
     id='UR5PlayAbsRPY1Obj-v0',
     entry_point='pandaRL.envs:UR5PlayAbsRPY1Obj',

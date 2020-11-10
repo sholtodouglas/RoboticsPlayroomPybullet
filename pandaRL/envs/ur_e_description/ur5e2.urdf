@@ -288,6 +288,13 @@
   </link>
 
   <link name="robotiq_arg2f_base_link">
+  <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <inertial>
       <origin rpy="0 0 0" xyz="8.625E-08 -4.6583E-06 0.03145"/>
       <mass value="0.22652"/>
@@ -296,6 +303,13 @@
     </inertial>
   </link>
   <link name="robotiq_2f_85_left_driver">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <inertial>
       <origin xyz="-0.000200000000003065 0.0199435877845359 0.0292245259211331" rpy="0 0 0"/>
       <mass value="0.00853198276973456"/>
@@ -323,6 +337,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_left_coupler">
+     <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <!--<inertial>
         <origin xyz="0.00030115855001899 0.0373907951953854 -0.0208027427000385" rpy="0 0 0" />
         <mass value="0.022614240507152" />
@@ -349,6 +370,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_left_follower">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <!--<inertial>
         <origin xyz="0.000299999999999317 0.0160078233491243 -0.0136945669206257" rpy="0 0 0" />
         <mass value="0.0104003125914103" />
@@ -375,6 +403,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_left_pad">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
@@ -395,6 +430,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_left_spring_link">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <!--<inertial>
         <origin xyz="0.000123011831763771 0.0507850843201817 0.00103968640075166" rpy="0 0 0" />
        <mass value="0.0271177346495152" />
@@ -421,6 +463,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_right_driver">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <!--<inertial>
         <origin xyz="-0.000200000000003065 0.0199435877845359 0.0292245259211331" rpy="0 0 0" />
         <mass value="0.00853198276973456" />
@@ -447,6 +496,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_right_coupler">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <!--<inertial>
         <origin xyz="0.00030115855001899 0.0373907951953854 -0.0208027427000385" rpy="0 0 0" />
         <mass value="0.022614240507152" />
@@ -460,7 +516,7 @@
             scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="">
-        <color rgba="0.1 0.1 0.1 1"/>
+        <color rgba="0.1 0.1 0.1 1"/> 
       </material>
     </visual>
     <collision>
@@ -473,6 +529,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_right_follower">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <!--<inertial>
         <origin xyz="0.000299999999999317 0.0160078233491243 -0.0136945669206257" rpy="0 0 0" />
         <mass value="0.0104003125914103" />
@@ -499,6 +562,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_right_pad">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
@@ -519,6 +589,13 @@
     </collision>
   </link>
   <link name="robotiq_2f_85_right_spring_link">
+    <contact>
+      <friction_anchor/>
+      <stiffness value="30000.0"/>
+      <damping value="1000.0"/>
+      <spinning_friction value="0.1"/>
+      <lateral_friction value="1.0"/>
+    </contact>
     <!--<inertial>
         <origin xyz="0.000123011831763771 0.0507850843201817 0.00103968640075166" rpy="0 0 0" />
        <mass value="0.0271177346495152" />

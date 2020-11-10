@@ -71,7 +71,14 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high, n
     add_static(bullet_client)
 
     for b in range(0, num_objects):
-        legos.append(bullet_client.createMultiBody(0.3, colcubeId, viz_ids[b], [-0.6, -0.06, -0.006]))
+        legoUID = bullet_client.createMultiBody(0.3, colcubeId, viz_ids[b], [-0.6, -0.06, -0.006])
+        bullet_client.changeDynamics(legoUID,
+                                 -1,
+                                #  spinningFriction=1,
+                                #  rollingFriction=1,
+                                 lateralFriction=0.75)
+        legos.append(legoUID)
+        
 
     return legos, drawer, [door,button, dial], {button: ('button', toggleSphere), dial: ('dial', toggleGrill)} # return the toggle sphere with it's joint index
 

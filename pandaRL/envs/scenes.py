@@ -260,33 +260,28 @@ def add_button(bullet_client, offset=np.array([0, 0, 0]), ghostly = False):
 def add_drawer(bullet_client, offset=np.array([0, 0, 0]), flags=None, ghostly=False):
 
 
+    if not ghostly:
+        # add in the blockers to prevent it being pulled all the way out
+        half_extents = [0.1, 0.28, 0.005]
+        colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=half_extents)
+        visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=half_extents,
+                                                     rgbaColor=[0.75, 0.4, 0.2, 1])
+        bottom = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [-0.13, 0.25, -0.13])
+        half_extents = [0.1, 0.05, 0.015]
+        colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=half_extents)
+        visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=half_extents,
+                                                     rgbaColor=[0.75, 0.4, 0.2, 1])
+        back = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0, 0.25, -0.06])
+        half_extents = [0.03, 0.01, 0.045]
+        colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=half_extents)
+        visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=half_extents,
+                                                     rgbaColor=[0.75, 0.4, 0.2, 1])
+        side1 = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [-0.25, -0.02, -0.08])
 
-    # add in the blockers to prevent it being pulled all the way out
-    half_extents = [0.1, 0.28, 0.005]
-    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=half_extents)
-    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=half_extents,
-                                                 rgbaColor=[0.75, 0.4, 0.2, 1])
-    bottom = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [-0.13, 0.25, -0.13])
-    half_extents = [0.1, 0.05, 0.015]
-    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=half_extents)
-    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=half_extents,
-                                                 rgbaColor=[0.75, 0.4, 0.2, 1])
-    back = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0, 0.25, -0.06])
-    half_extents = [0.03, 0.01, 0.045]
-    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=half_extents)
-    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=half_extents,
-                                                 rgbaColor=[0.75, 0.4, 0.2, 1])
-    side1 = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [-0.25, -0.02, -0.08])
-
-    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=half_extents)
-    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=half_extents,
-                                                 rgbaColor=[0.75, 0.4, 0.2, 1])
-    side2 = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [-0.0, -0.02, -0.08])
-
-    mass = 0
-    visualShapeId = -1
-
-    sphereRadius = 0.0001
+        colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=half_extents)
+        visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=half_extents,
+                                                     rgbaColor=[0.75, 0.4, 0.2, 1])
+        side2 = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [-0.0, -0.02, -0.08])
 
 
     wallid = bullet_client.createCollisionShape(bullet_client.GEOM_MESH, fileName=os.path.dirname(
@@ -294,14 +289,16 @@ def add_drawer(bullet_client, offset=np.array([0, 0, 0]), flags=None, ghostly=Fa
                                                 flags=bullet_client.GEOM_FORCE_CONCAVE_TRIMESH)
 
     if ghostly:
+        mass = 0
         visId = bullet_client.createVisualShape(bullet_client.GEOM_MESH, fileName=os.path.dirname(
             os.path.abspath(__file__)) + '/env_meshes/drawer2.obj', meshScale=[1.25] * 3,
                                                 flags=bullet_client.GEOM_FORCE_CONCAVE_TRIMESH,
                                                 rgbaColor=[1, 1, 0, 0.5])
     else:
+        mass = 0.1
         visId = -1
     drawer_defaults = {"pos": [-0.10, -0.00, -0.04], "ori": bullet_client.getQuaternionFromEuler([np.pi/2,0,0])}
-    drawer = bullet_client.createMultiBody(0.1, wallid, visId, drawer_defaults['pos'], baseOrientation=drawer_defaults['ori'])
+    drawer = bullet_client.createMultiBody(mass, wallid, visId, drawer_defaults['pos'], baseOrientation=drawer_defaults['ori'])
 
     if ghostly:
         collisionFilterGroup = 0

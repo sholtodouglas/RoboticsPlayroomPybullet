@@ -505,17 +505,18 @@ class pointMassSim():
                 self.bullet_client.resetJointState(j, 0, sub_goal[index+i])  # reset drawer, button etc
 
     def delete_sub_goal(self):
-
+        for i in self.sub_goals:
+            self.bullet_client.removeBody(i)
+        self.sub_goals = None
         for i in self.ghost_joints:
             self.bullet_client.removeBody(i)
         self.bullet_client.removeBody(self.ghost_drawer['drawer'])
-        for i in self.sub_goals:
-            self.bullet_client.removeBody(i)
+
         try:
             self.bullet_client.removeBody(self.ghost_arm)
         except:
             pass
-        self.sub_goals = None
+
 
 
     def calc_actor_state(self):
@@ -1247,6 +1248,9 @@ class pandaEnv(gym.GoalEnv):
 
     def visualise_sub_goal(self, sub_goal, sub_goal_state = 'full_positional_state'):
         self.panda.visualise_sub_goal(sub_goal, sub_goal_state = sub_goal_state)
+
+    def delete_sub_goal(self):
+        self.panda.delete_sub_goal()
 
 
 class pointMassEnv(pandaEnv):

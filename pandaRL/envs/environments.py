@@ -17,7 +17,7 @@ import math
 from scenes import *
 from shadow_arm import InverseKinematicsSolver
 GUI = False
-viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0.25, 0], distance=1.0, yaw=45, pitch=-45, roll=0,
+viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0.25, 0], distance=1.0, yaw=130, pitch=-45, roll=0,
                                                  upAxisIndex=2)
 
 projectionMatrix = p.computeProjectionMatrixFOV(fov=50, aspect=1, nearVal=0.01, farVal=10)
@@ -1161,7 +1161,7 @@ class pandaEnv(gym.GoalEnv):
 
 
         #self.p.setPhysicsEngineParameter(maxNumCmdPer1ms=1000)
-        # self.p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=38, cameraPitch=-22,
+        # self.p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=45, cameraPitch=-90,
         #                              cameraTargetPosition=[0.35, -0.13, 0])
         self.p.setAdditionalSearchPath(pd.getDataPath())
 
@@ -1183,7 +1183,7 @@ class pandaEnv(gym.GoalEnv):
         self.panda.control_dt = self.timeStep
         lookat = [0, 0.0, 0.0]
         distance = 0.8
-        yaw = 230
+        yaw = 130
         self.p.resetDebugVisualizerCamera(distance, yaw, -130, lookat)
 
     def vr_activation(self, vr=None):

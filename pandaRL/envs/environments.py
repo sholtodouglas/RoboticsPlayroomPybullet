@@ -501,7 +501,7 @@ class pointMassSim():
             self.bullet_client.resetBasePositionAndOrientation(self.ghost_drawer['drawer'], drawer_pos, self.ghost_drawer['defaults']['ori'])
             index += 1
             for i, j in enumerate(self.ghost_joints):
-                print(index+i)
+                #(index+i)
                 self.bullet_client.resetJointState(j, 0, sub_goal[index+i])  # reset drawer, button etc
 
     def delete_sub_goal(self):
@@ -529,7 +529,10 @@ class pointMassSim():
             state = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)
             pos, orn, vel, orn_vel = state[0], state[1], state[-2], state[-1]
 
-            gripper_state = [self.bullet_client.getJointState(self.panda, 9)[0]]
+            if self.arm_type == 'Panda':
+                gripper_state = [self.bullet_client.getJointState(self.panda, 9)[0]]
+            else:
+                gripper_state = [self.bullet_client.getJointState(self.panda, 18)[0]]
 
 
             joint_poses = [self.bullet_client.getJointState(self.panda, j)[0] for j in range(8)]
@@ -1442,6 +1445,7 @@ def main():
 
             #panda.absolute_command(action[0:3], action[3:6])
             state = panda.panda.calc_actor_state()
+
             #pos_change = action[0:3] - state['pos']
             # des_ori = panda.panda.default_arm_orn #  np.array(action[3:6])
             #des_ori = p.getQuaternionFromEuler(action[3:6])
@@ -1449,6 +1453,7 @@ def main():
             #
             #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
+            print(obs['obs_rpy'][6])
             #print(obs['achieved_goal'][7:])
             #print(p.getEulerFromQuaternion(state['orn']))
             x = obs['achieved_goal']

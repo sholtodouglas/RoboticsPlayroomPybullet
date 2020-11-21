@@ -532,7 +532,7 @@ class pointMassSim():
             if self.arm_type == 'Panda':
                 gripper_state = [self.bullet_client.getJointState(self.panda, 9)[0]]
             else:
-                gripper_state = [self.bullet_client.getJointState(self.panda, 18)[0]]
+                gripper_state = [self.bullet_client.getJointState(self.panda, 18)[0]*23] # put it on a 0-1 scale
 
 
             joint_poses = [self.bullet_client.getJointState(self.panda, j)[0] for j in range(8)]

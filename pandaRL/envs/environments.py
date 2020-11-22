@@ -529,13 +529,16 @@ class pointMassSim():
             state = self.bullet_client.getLinkState(self.panda, self.endEffectorIndex, computeLinkVelocity=1)
             pos, orn, vel, orn_vel = state[0], state[1], state[-2], state[-1]
 
-            gripper_state = [self.bullet_client.getJointState(self.panda, 9)[0]]
+            if self.arm_type == 'Panda':
+                gripper_state = [self.bullet_client.getJointState(self.panda, 9)[0]]
+            else:
+                gripper_state = [self.bullet_client.getJointState(self.panda, 18)[0]*23] # put it on a 0-1 scale
 
 
             joint_poses = [self.bullet_client.getJointState(self.panda, j)[0] for j in range(8)]
 
         #img = gripper_camera(self.bullet_client, pos, orn)
-        print(gripper_state)
+        
         return {'pos': self.subtract_centering_offset(pos), 'orn': orn, 'pos_vel': vel, 'orn_vel': orn_vel,
                 'gripper': gripper_state, 'joints':joint_poses}
 
@@ -1432,7 +1435,7 @@ def main():
 
             poses[0:len(panda.panda.ul)] = np.clip(poses[0:len(panda.panda.ul)], panda.panda.ll, panda.panda.ul)
             panda.panda.reset_arm_joints(panda.panda.panda, poses)
-            #print(p.getEulerFromQuaternion(panda.panda.calc_actor_state()['orn']))
+            print(p.getEulerFromQuaternion(panda.panda.calc_actor_state()['orn']))
 
         else:
             action = []
@@ -1442,6 +1445,7 @@ def main():
 
             #panda.absolute_command(action[0:3], action[3:6])
             state = panda.panda.calc_actor_state()
+
             #pos_change = action[0:3] - state['pos']
             # des_ori = panda.panda.default_arm_orn #  np.array(action[3:6])
             #des_ori = p.getQuaternionFromEuler(action[3:6])
@@ -1449,6 +1453,7 @@ def main():
             #
             #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
+            print(obs['obs_rpy'][6])
             #print(obs['achieved_goal'][7:])
             #print(p.getEulerFromQuaternion(state['orn']))
             x = obs['achieved_goal']

@@ -501,7 +501,7 @@ class pointMassSim():
             self.bullet_client.resetBasePositionAndOrientation(self.ghost_drawer['drawer'], drawer_pos, self.ghost_drawer['defaults']['ori'])
             index += 1
             for i, j in enumerate(self.ghost_joints):
-                print(index+i)
+                #print(index+i)
                 self.bullet_client.resetJointState(j, 0, sub_goal[index+i])  # reset drawer, button etc
 
     def delete_sub_goal(self):
@@ -535,7 +535,7 @@ class pointMassSim():
             joint_poses = [self.bullet_client.getJointState(self.panda, j)[0] for j in range(8)]
 
         #img = gripper_camera(self.bullet_client, pos, orn)
-
+        print(gripper_state)
         return {'pos': self.subtract_centering_offset(pos), 'orn': orn, 'pos_vel': vel, 'orn_vel': orn_vel,
                 'gripper': gripper_state, 'joints':joint_poses}
 
@@ -1432,7 +1432,7 @@ def main():
 
             poses[0:len(panda.panda.ul)] = np.clip(poses[0:len(panda.panda.ul)], panda.panda.ll, panda.panda.ul)
             panda.panda.reset_arm_joints(panda.panda.panda, poses)
-            print(p.getEulerFromQuaternion(panda.panda.calc_actor_state()['orn']))
+            #print(p.getEulerFromQuaternion(panda.panda.calc_actor_state()['orn']))
 
         else:
             action = []

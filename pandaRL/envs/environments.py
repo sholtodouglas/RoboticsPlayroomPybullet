@@ -158,7 +158,7 @@ class pointMassSim():
                     self.init_arm_base_orn = p.getQuaternionFromEuler([0, 0, np.pi/2])
 
             else:
-
+ 
                 self.init_arm_base_pos = np.array([0, 0, 0])
 
             if self.arm_type == 'Panda':
@@ -518,6 +518,24 @@ class pointMassSim():
             pass
 
 
+    def gripper_proprioception(self):
+        gripper_one = np.array(self.bullet_client.getLinkState(self.panda, 18)[0])
+        gripper_two = np.array(self.bullet_client.getLinkState(self.panda, 20)[0])
+        vector = gripper_two-gripper_one
+        gripper_one = gripper_one + 0.2*vector
+
+        try:
+            obj_id, link_index, hit_fraction, hit_position, hit_normal = self.bullet_client.rayTest(gripper_one, gripper_two)[0]
+            print(link_index, hit_fraction)
+            #self.bullet_client.addUserDebugLine(gripper_one, gripper_two, [1,0,0], 0.5, 1)
+            
+            if link_index == 20:
+                return 0 # free hand! :)
+            else:
+                return 1 # something in the way, oooh, something in the way
+        else:
+            return -1 # this shouldn't ever happen because the ray will always hit the other side of the gripper
+
 
     def calc_actor_state(self):
 
@@ -540,7 +558,7 @@ class pointMassSim():
         #img = gripper_camera(self.bullet_client, pos, orn)
 
         return {'pos': self.subtract_centering_offset(pos), 'orn': orn, 'pos_vel': vel, 'orn_vel': orn_vel,
-                'gripper': gripper_state, 'joints':joint_poses}
+                'gripper': gripper_state, 'joints':joint_poses, 'gripper_proprioception': self.gripper_proprioception()}
 
 
     def calc_environment_state(self):
@@ -624,7 +642,8 @@ class pointMassSim():
             'joints': arm_state['joints'],
             'velocity': np.concatenate([arm_state['pos_vel'], arm_state['orn_vel']]),
             'img': img_arr,
-            'obs_rpy': np.concatenate([state[0:3], p.getEulerFromQuaternion(state[3:7]), state[7:]]).copy()
+            'obs_rpy': np.concatenate([state[0:3], p.getEulerFromQuaternion(state[3:7]), state[7:]]).copy(),
+            'gripper_proprioception':  arm_state['gripper_proprioception']
         }
 
 
@@ -1428,6 +1447,9 @@ def main():
 
     for i in range(1000000):
 
+        
+    
+
         if joint_control:
             poses  = []
             for i in range(0, len(panda.panda.restJointPositions)):
@@ -1453,7 +1475,7 @@ def main():
             #
             #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
-            print(obs['obs_rpy'][6])
+            #print(obs['obs_rpy'][6])
             #print(obs['achieved_goal'][7:])
             #print(p.getEulerFromQuaternion(state['orn']))
             x = obs['achieved_goal']

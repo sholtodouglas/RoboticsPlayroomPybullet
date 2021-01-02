@@ -521,19 +521,22 @@ class pointMassSim():
     def gripper_proprioception(self):
         gripper_one = np.array(self.bullet_client.getLinkState(self.panda, 18)[0])
         gripper_two = np.array(self.bullet_client.getLinkState(self.panda, 20)[0])
-        vector = gripper_two-gripper_one
-        gripper_one = gripper_one + 0.2*vector
+        ee = np.array(self.bullet_client.getLinkState(self.panda, self.endEffectorIndex)[0])
+        wrist = np.array(self.bullet_client.getLinkState(self.panda, self.endEffectorIndex - 1)[0])
+        avg_gripper = (gripper_one + gripper_two) / 2
+        point_one = ee - (ee - wrist) * 0.5 # far up
+        point_two = avg_gripper + (ee - wrist) * 0.2 # between the prongs
 
         try:
-            obj_id, link_index, hit_fraction, hit_position, hit_normal = self.bullet_client.rayTest(gripper_one, gripper_two)[0]
-            print(link_index, hit_fraction)
+            obj_id, link_index, hit_fraction, hit_position, hit_normal = self.bullet_client.rayTest(point_one, point_two)[0]
+            #print(link_index, hit_fraction)
             #self.bullet_client.addUserDebugLine(gripper_one, gripper_two, [1,0,0], 0.5, 1)
             
-            if link_index == 20:
-                return 0 # free hand! :)
+            if hit_fraction == 1.0 or link_index == 18 or link_index == 20:
+                return 0 # nothing in the hand
             else:
                 return 1 # something in the way, oooh, something in the way
-        else:
+        except:
             return -1 # this shouldn't ever happen because the ray will always hit the other side of the gripper
 
 
@@ -1468,6 +1471,22 @@ def main():
             #panda.absolute_command(action[0:3], action[3:6])
             state = panda.panda.calc_actor_state()
 
+            # gripper_one = np.array(panda.panda.bullet_client.getLinkState(panda.panda.panda, 18)[0])
+            # gripper_two = np.array(panda.panda.bullet_client.getLinkState(panda.panda.panda, 20)[0])
+            # ee  = np.array(panda.panda.bullet_client.getLinkState(panda.panda.panda, panda.panda.endEffectorIndex)[0])
+            # wrist = np.array(panda.panda.bullet_client.getLinkState(panda.panda.panda, panda.panda.endEffectorIndex-1)[0])
+            # avg_gripper = (gripper_one+gripper_two)/2
+            # ee_back = ee - (ee-wrist)*0.5
+            # avg_gripper += (ee-wrist)*0.2
+
+            # vector = gripper_two - gripper_one
+            # gripper_one = gripper_one + 0.15 * vector
+            #
+            #
+            # obj_id, link_index, hit_fraction, hit_position, hit_normal = panda.panda.bullet_client.rayTest(ee_back, avg_gripper)[0]
+            # print(link_index, hit_fraction)
+            # panda.panda.bullet_client.addUserDebugLine(ee_back, avg_gripper, [1,0,0], 0.5, 1)
+
             #pos_change = action[0:3] - state['pos']
             # des_ori = panda.panda.default_arm_orn #  np.array(action[3:6])
             #des_ori = p.getQuaternionFromEuler(action[3:6])
@@ -1475,6 +1494,7 @@ def main():
             #
             #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
+            print(obs['gripper_proprioception'])
             #print(obs['obs_rpy'][6])
             #print(obs['achieved_goal'][7:])
             #print(p.getEulerFromQuaternion(state['orn']))

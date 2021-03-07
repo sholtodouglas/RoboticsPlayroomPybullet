@@ -331,6 +331,7 @@ class pointMassSim():
         self.updateToggles() # so its got both in VR and replay out
         #for i in range(0, 18): # 20Hz control with 480 timestep
         for i in range(0, 12):  # 25Hz control at 300
+        #for i in range(0, 6):  # 50Hz control at 30
             self.bullet_client.stepSimulation()
 
 
@@ -561,7 +562,7 @@ class pointMassSim():
         #img = gripper_camera(self.bullet_client, pos, orn)
         
         return {'pos': self.subtract_centering_offset(pos), 'orn': orn, 'pos_vel': vel, 'orn_vel': orn_vel,
-                'gripper': gripper_state, 'joints':joint_poses, 'gripper_proprioception': self.gripper_proprioception()}
+                'gripper': gripper_state, 'joints':joint_poses, 'proprioception': self.gripper_proprioception()}
 
 
     def calc_environment_state(self):
@@ -646,7 +647,9 @@ class pointMassSim():
             'velocity': np.concatenate([arm_state['pos_vel'], arm_state['orn_vel']]),
             'img': img_arr,
             'obs_rpy': np.concatenate([state[0:3], p.getEulerFromQuaternion(state[3:7]), state[7:]]).copy(),
-            'gripper_proprioception':  arm_state['gripper_proprioception']
+            'obs_rpy_inc_obj':  np.concatenate([state[0:3], p.getEulerFromQuaternion(state[3:7]), state[7:11],
+                p.getEulerFromQuaternion(state[11:15]), state[15:]]).copy(),
+            'proprioception':  arm_state['proprioception']
         }
 
 
@@ -1494,7 +1497,7 @@ def main():
             #
             #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
-            print(obs['gripper_proprioception'])
+            print(obs['proprioception'])
             #print(obs['obs_rpy'][6])
             #print(obs['achieved_goal'][7:])
             #print(p.getEulerFromQuaternion(state['orn']))

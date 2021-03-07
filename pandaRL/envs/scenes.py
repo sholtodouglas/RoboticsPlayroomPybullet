@@ -76,7 +76,7 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high, n
                                  -1,
                                 #  spinningFriction=1,
                                 #  rollingFriction=1,
-                                 lateralFriction=0.75)
+                                 lateralFriction=1.5)
         legos.append(legoUID)
         
 

@@ -1,2 +1,2 @@
-# PandaPybulletRL
-Wraps the pybullet panda arm in an gym env for RL work. 
+
+Environments to support https://github.com/sholtodouglas/learning_from_play

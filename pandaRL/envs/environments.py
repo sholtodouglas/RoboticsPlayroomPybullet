@@ -655,7 +655,7 @@ class pointMassSim():
             'velocity': np.concatenate([arm_state['pos_vel'], arm_state['orn_vel']]),
             'img': img_arr,
             'observation': np.concatenate([state[0:3], p.getEulerFromQuaternion(state[3:7]), state[7:]]).copy(),
-            'gripper_proprioception':  arm_state['gripper_proprioception']
+            'gripper_proprioception':  arm_state['proprioception']
         }
 
 
@@ -1500,7 +1500,6 @@ def main():
             #
             #action = np.concatenate([action[0:3], des_ori, [action[6]]])
             obs, r, done, info = panda.step(np.array(action))
-            print(obs['proprioception'])
             #print(obs['obs_rpy'][6])
             #print(obs['achieved_goal'][7:])
             #print(p.getEulerFromQuaternion(state['orn']))

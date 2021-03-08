@@ -17,7 +17,15 @@ import math
 from scenes import *
 from shadow_arm import InverseKinematicsSolver
 GUI = False
-viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0.25, 0], distance=1.0, yaw=130, pitch=-45, roll=0,
+lookat = [0, 0.0, 0.0]
+distance = 0.8
+yaw = 130
+pitch = -130
+pixels = 200
+# viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=lookat, distance=distance, yaw=yaw, pitch=pitch, roll=0,
+#                                                  upAxisIndex=2)
+# distane for obs is ~1.1
+viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0.25, 0], distance=1.3, yaw=-30, pitch=-30, roll=0,
                                                  upAxisIndex=2)
 
 projectionMatrix = p.computeProjectionMatrixFOV(fov=50, aspect=1, nearVal=0.01, farVal=10)
@@ -274,14 +282,14 @@ class pointMassSim():
             self.bullet_client.resetBasePositionAndOrientation(self.drawer['drawer'], self.drawer['defaults']['pos'],
                                                                self.drawer['defaults']['ori'])
             for i in self.joints:
-                self.bullet_client.resetJointState(i, 0, 0) # reset drawer, button etc
+                self.bullet_client.resetJointState(i, 0, 0) # reset door, button etc
 
         if obs is None:
             height_offset = 0.03
             for o in self.objects:
                 pos = self.add_centering_offset(np.random.uniform(self.obj_lower_bound, self.obj_upper_bound))
                 pos[2] = pos[2] + height_offset  # so they don't collide
-                self.bullet_client.resetBasePositionAndOrientation(o, pos, [0,0,0,1])
+                self.bullet_client.resetBasePositionAndOrientation(o, pos, [0.0, 0.0, 0.7071, 0.7071])
                 height_offset += 0.03
             for i in range(0, 100):
                 self.bullet_client.stepSimulation() # let everything fall into place, falling in to piecees...
@@ -628,7 +636,7 @@ class pointMassSim():
             full_positional_state = np.concatenate([arm_state['pos'], arm_state['gripper']])
 
         if self.record_images:
-            img_arr = self.bullet_client.getCameraImage(200, 200, viewMatrix, projectionMatrix, flags=self.bullet_client.ER_NO_SEGMENTATION_MASK, shadow=0,
+            img_arr = self.bullet_client.getCameraImage(pixels, pixels, viewMatrix, projectionMatrix, flags=self.bullet_client.ER_NO_SEGMENTATION_MASK, shadow=0,
                                        renderer=self.bullet_client.ER_BULLET_HARDWARE_OPENGL)[2][:,:,:3] #just the rgb
         else:
             img_arr = None
@@ -636,7 +644,7 @@ class pointMassSim():
         if self.play:
             state, achieved_goal = self.quaternion_safe_the_obs(state, achieved_goal)
         return_dict = {
-            'observation': state.copy().astype('float32'),
+            'obs_quat': state.copy().astype('float32'),
             'achieved_goal': achieved_goal.copy().astype('float32'),
             'desired_goal': self.goal.copy().astype('float32'),
             'controllable_achieved_goal': np.concatenate([arm_state['pos'].copy(), arm_state['gripper'].copy()]).astype('float32'),
@@ -645,7 +653,7 @@ class pointMassSim():
             'joints': arm_state['joints'],
             'velocity': np.concatenate([arm_state['pos_vel'], arm_state['orn_vel']]),
             'img': img_arr,
-            'obs_rpy': np.concatenate([state[0:3], p.getEulerFromQuaternion(state[3:7]), state[7:]]).copy(),
+            'observation': np.concatenate([state[0:3], p.getEulerFromQuaternion(state[3:7]), state[7:]]).copy(),
             'gripper_proprioception':  arm_state['gripper_proprioception']
         }
 
@@ -837,7 +845,7 @@ class pointMassSim():
 
         # all absolute, can do relative predictions on the AI side if we want
         new_pos = action[0:3]
-        new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
+        #new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
         #new_pos[2] = max(new_pos[2], arm_z_min)  # z min is very important to stop it going through table
 
         gripper = action[-1]
@@ -861,7 +869,7 @@ class pointMassSim():
     def absolute_rpy_step(self, action):
         assert len(action) == 7
         new_pos = action[0:3]
-        new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
+        #new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
         new_orn = action[3:6]
         gripper = action[-1]
         targetPoses = self.goto(new_pos, self.bullet_client.getQuaternionFromEuler(new_orn), gripper)
@@ -1206,10 +1214,7 @@ class pandaEnv(gym.GoalEnv):
                                          self.render_scene, pointMass = self.pointMass, fixed_gripper=self.fixed_gripper, 
                                         play=self.play, show_goal = self.show_goal, num_objects=self.num_objects, arm_type=self.arm_type)
         self.panda.control_dt = self.timeStep
-        lookat = [0, 0.0, 0.0]
-        distance = 0.8
-        yaw = 130
-        self.p.resetDebugVisualizerCamera(distance, yaw, -130, lookat)
+        self.p.resetDebugVisualizerCamera(distance, yaw, pitch, lookat)
 
     def vr_activation(self, vr=None):
         #self.p = bullet_client.BulletClient(connection_mode=p.GUI)
@@ -1303,7 +1308,7 @@ class pandaReach2D(pandaEnv):
 		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high, goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation)
 
 class pandaPlay(pandaEnv):
-	def __init__(self, num_objects = 2, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
+	def __init__(self, num_objects = 2, env_range_low = [-1.0, -1.0, -0.4], env_range_high = [1.0, 1.0, 1.0],
                  goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
 		super().__init__(pointMass = False, num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
                          goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,

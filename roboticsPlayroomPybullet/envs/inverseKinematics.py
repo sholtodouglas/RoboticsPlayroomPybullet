@@ -31,12 +31,13 @@ class InverseKinematicsSolver():
         self.ee_index=ee_index
         self.set_states(self.default_joints)
 
-    # sets the arm to the current joint positions so IK calcs are accurate
+    # sets the arm to refernce jointPositions
     def set_states(self,states):
         for idx, i in enumerate(self.joints_indices):
             # print_output("states {}".format(i))
             self.p.resetJointState(self.ur5, i, states[idx])
 
+    # Gets position of solving UR5 - used for debugging
     def get_position(self):
         return self.p.getLinkState(self.ur5,self.ee_index)[0:2]
 

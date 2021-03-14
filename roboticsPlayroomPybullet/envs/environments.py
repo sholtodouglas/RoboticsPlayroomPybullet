@@ -15,34 +15,21 @@ urdfRoot = pybullet_data.getDataPath()
 import gym.spaces as spaces
 import math
 from scenes import *
-from shadow_arm import InverseKinematicsSolver
-GUI = False
+
+from inverseKinematics import InverseKinematicsSolver
+
 lookat = [0, 0.0, 0.0]
 distance = 0.8
 yaw = 130
 pitch = -130
 pixels = 200
-# viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=lookat, distance=distance, yaw=yaw, pitch=pitch, roll=0,
-#                                                  upAxisIndex=2)
-# distane for obs is ~1.1
-viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0.25, 0], distance=1.3, yaw=-30, pitch=-30, roll=0,
+viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=lookat, distance=distance, yaw=yaw, pitch=pitch, roll=0,
                                                  upAxisIndex=2)
-
 projectionMatrix = p.computeProjectionMatrixFOV(fov=50, aspect=1, nearVal=0.01, farVal=10)
 
-useNullSpace = 1
-ikSolver = 1
-
-
-
-# restposes for null space
-
-arm_z_min = -0.055
-
-
-
-
+# A function used to get camera images from the gripper - experimental
 def gripper_camera(bullet_client, pos, ori):
+
     # Center of mass position and orientation (of link-7)
     pos = np.array(pos)
     ori = p.getEulerFromQuaternion(ori) + np.array([0,-np.pi/2,0])
@@ -59,8 +46,11 @@ def gripper_camera(bullet_client, pos, ori):
     img = bullet_client.getCameraImage(200, 200, view_matrix_gripper, projectionMatrix,shadow=0, flags = bullet_client.ER_NO_SEGMENTATION_MASK, renderer=p.ER_BULLET_HARDWARE_OPENGL)
     return img
 
-class armSim():
+# An instance of the environment. Multiples of these can be placed in the same 
+# 'env' by using the offset parameter - and obs/acts will be placed into the offsetby the
+# add/subtract centering offset functions. 
 
+class instance():
     def __init__(self, bullet_client, offset, load_scene, arm_lower_lim, arm_upper_lim,
         env_lower_bound, env_upper_bound, goal_lower_bound,
         goal_upper_bound, obj_lower_bound, obj_upper_bound, use_orientation, return_velocity, render_scene,
@@ -73,6 +63,7 @@ class armSim():
             self.objects, self.drawer, self.joints, self.toggles = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound, num_objects) # Todo: later, put this after the centering offset so that objects are centered around it too.
         else:
             self.objects = load_scene(self.bullet_client, offset, flags, env_lower_bound, env_upper_bound)
+        
         self.num_objects = num_objects
         self.use_orientation = use_orientation
         self.return_velocity = return_velocity
@@ -110,7 +101,6 @@ class armSim():
             self.endEffectorIndex = 7
             # this pose makes it very easy for the IK to do the 'underhand' grip, which isn't well solved for
             # if we take an over hand top down as our default (its very easy for it to flip into an unideal configuration)
-
             self.restJointPositions =  [-1.50189075, - 1.6291067, - 1.87020409, - 1.21324173, 1.57003561, 0.06970189]
             self.numDofs = 6
             self.init_arm_base_pos = np.array([0.5, -0.1, 0.0])
@@ -118,9 +108,7 @@ class armSim():
         else:
             raise NotImplementedError
         self.ll = [-7] * self.numDofs
-        # upper limits for null space (todo: set them to proper range)
         self.ul = [7] * self.numDofs
-        # joint ranges for null space (todo: set them to proper range)
         self.jr = [6] * self.numDofs
         self.record_images = False
         self.last_obs = None  # use for quaternion flipping purpposes (with equivalent quaternions)
@@ -142,10 +130,7 @@ class armSim():
             self.arm = self.bullet_client.loadURDF(currentdir + "/franka_panda/panda.urdf",
                                                         self.init_arm_base_pos + offset,
                                                         self.init_arm_base_orn , useFixedBase=True, flags=flags)
-            c = self.bullet_client.createConstraint(self.arm,
-                                                    9,
-                                                    self.arm,
-                                                    10,
+            c = self.bullet_client.createConstraint(self.arm,9,self.arm,10,
                                                     jointType=self.bullet_client.JOINT_GEAR,
                                                     jointAxis=[1, 0, 0],
                                                     parentFramePosition=[0, 0, 0],
@@ -201,20 +186,42 @@ class armSim():
         for i in range(self.num_objects):
             self.bullet_client.changeVisualShape(self.objects[i], -1, rgbaColor=self.obj_colors[i])
 
-
-
-
+    # Adds the offset (i.e to actions or objects being created) so that all instances share an action/obs space
     def add_centering_offset(self, numbers):
         # numbers either come in as xyz, or xyzxyzxyz etc (in the case of goals or achieved goals)
         offset = np.array(list(self.offset) * (len(numbers) // 3))
         numbers = numbers + offset
         return numbers
-
+    # Subtract the offset (i.e when reading out states) so the obs observed have correct info
     def subtract_centering_offset(self, numbers):
         offset = np.array(list(self.offset) * (len(numbers) // 3))
         numbers = numbers - offset
         return numbers
 
+    # Checks if the button or dial was pressed, and changes the environment to reflect it
+    def updateToggles(self):
+        for k, v in self.toggles.items():
+            jointstate = self.bullet_client.getJointState(k, 0)[0]
+            if v[0] == 'button':
+
+                if jointstate < 0.025:
+                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1,0,0,1])
+                else:
+                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1, 1, 1, 1])
+            if v[0] == 'dial':
+
+                if dial_to_0_1_range(jointstate) < 0.5:
+                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1,0,0,1])
+                else:
+                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1, 1, 1, 1])
+    # Takes environment steps s.t the sim runs at 25 Hz
+    def runSimulation(self):
+        # also do toggle updating here
+        if self.play:
+            self.updateToggles() # so its got both in VR and replay out
+        for i in range(0, 12):  # 25Hz control at 300
+            self.bullet_client.stepSimulation()
+    # Resets goal positions, if a goal is passed in - it will reset the goal to that position
     def reset_goal_pos(self, goal=None):
         if goal is None:
             self.goal = []
@@ -233,8 +240,7 @@ class armSim():
                 self.bullet_client.resetBasePositionAndOrientation(self.goals[g], pos, [0, 0, 0, 1])
                 self.bullet_client.changeConstraint(self.goal_cids[g], pos, maxForce=100)
                 index += 3
-
-
+    # Resets object positions, if an obs is passed in - the objects will be reset using that
     def reset_object_pos(self, obs=None):
         # Todo object velocities to make this properly deterministic
         if self.play:
@@ -273,35 +279,7 @@ class armSim():
                     orn =  [0,0,0,1]
                 self.bullet_client.resetBasePositionAndOrientation(o, self.add_centering_offset(pos), orn)
                 index += increment
-
-
-    def updateToggles(self):
-        for k, v in self.toggles.items():
-            jointstate = self.bullet_client.getJointState(k, 0)[0]
-            if v[0] == 'button':
-
-                if jointstate < 0.025:
-                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1,0,0,1])
-                else:
-                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1, 1, 1, 1])
-            if v[0] == 'dial':
-
-                if dial_to_0_1_range(jointstate) < 0.5:
-                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1,0,0,1])
-                else:
-                    self.bullet_client.changeVisualShape(v[1], -1, rgbaColor=[1, 1, 1, 1])
-
-
-
-    def runSimulation(self):
-        # also do toggle updating here
-        if self.play:
-            self.updateToggles() # so its got both in VR and replay out
-        for i in range(0, 12):  # 25Hz control at 300
-            self.bullet_client.stepSimulation()
-
-
-
+    # Resets the arm joints to a specific pose
     def reset_arm_joints(self, arm, poses):
         index = 0
 
@@ -317,7 +295,8 @@ class armSim():
             if (jointType == self.bullet_client.JOINT_REVOLUTE):
                 self.bullet_client.resetJointState(arm, j, poses[index])
                 index = index + 1
-
+    # Resets the arm - if o is specified it will reset to that pose
+    # 'Which arm' specifies whether it is the actual arm, or the ghostly arm which can be used to visualise sub-goals in hierarchial settings (only implemented for Panda)
     def reset_arm(self, which_arm = None, o = None, from_init=True):
 
         orn = self.default_arm_orn
@@ -341,16 +320,21 @@ class armSim():
 
         self.reset_arm_joints(which_arm, jointPoses)
 
-
-
+    # Overall reset function, passes o to the above specific reset functions if sepecified
     def reset(self, o = None):
         self.reset_object_pos(o)
         self.reset_arm(self.arm, o)
         self.reset_goal_pos()
         self.t = 0
 
+    # Visualises the sub-goal passed to it as transparent version of the current goals (whether environment pieces, or the arm itself in reaching tasks)
     def visualise_sub_goal(self, sub_goal, sub_goal_state = 'full_positional_state'): # Todo this does not yet account for if we would like to do subgoals with orientation.
-
+        '''
+        Supports a number of different types of goal, all of which are returned by the 'calc_state' function
+        Full positional state : This is every (non velocity) aspect of the obs as a goal
+        Controllable achieved goal : Only the aspects of the env that are controllable, i.e its own pos/ori, not object
+        Achieved goal : Only the non controllable aspects of the env, i.e objects, not its own pos/ori
+        '''
         if self.sub_goals is None:
             # in the case of ag, num objects = 0 we want just ghost arm
             # ag, num object > 1, we want spheres per object
@@ -372,7 +356,7 @@ class armSim():
                 self.bullet_client.setCollisionFilterGroupMask(self.ghost_panda, -1, collisionFilterGroup,collisionFilterMask)
                 for i in range(0, self.bullet_client.getNumJoints(self.ghost_arm)):
                     self.bullet_client.setCollisionFilterGroupMask(self.ghost_arm, i, collisionFilterGroup,
-                                                                   collisionFilterMask)
+                                                                    collisionFilterMask)
                 self.reset_arm_joints(self.ghost_arm, self.restJointPositions)  # put it into a good init for IK
 
             if sub_goal_state == 'full_positional_state' or sub_goal_state is 'achieved_goal':
@@ -443,6 +427,7 @@ class armSim():
                 #print(index+i)
                 self.bullet_client.resetJointState(j, 0, sub_goal[index+i])  # reset drawer, button etc
 
+    # Deletes the sub-goal viz, as pyBullet's state reset does not work if extra objects are in the scene 
     def delete_sub_goal(self):
         for i in self.sub_goals:
             self.bullet_client.removeBody(i)
@@ -456,7 +441,7 @@ class armSim():
         except:
             pass
 
-
+    # Binary return indicating if something is between the gripper prongs, currently unused. 
     def gripper_proprioception(self):
         if self.arm_type == 'UR5':
             gripper_one = np.array(self.bullet_client.getLinkState(self.arm, 18)[0])
@@ -482,10 +467,11 @@ class armSim():
         else:
             return -1
 
-
+    # Calculates the state of the arm
     def calc_actor_state(self):
-
-
+        '''
+        Returns a dict of all the pieces of information you could want (e.g pos, orn, vel, orn vel, gripper, joints)
+        '''
         state = self.bullet_client.getLinkState(self.arm, self.endEffectorIndex, computeLinkVelocity=1)
         pos, orn, vel, orn_vel = state[0], state[1], state[-2], state[-1]
 
@@ -494,16 +480,21 @@ class armSim():
         else:
             gripper_state = [self.bullet_client.getJointState(self.arm, 18)[0]*23] # put it on a 0-1 scale
 
-
         joint_poses = [self.bullet_client.getJointState(self.arm, j)[0] for j in range(8)]
 
+        # If you want, you can access a gripper cam like this - you'll need to actually return it in the dict though
         #img = gripper_camera(self.bullet_client, pos, orn)
         
         return {'pos': self.subtract_centering_offset(pos), 'orn': orn, 'pos_vel': vel, 'orn_vel': orn_vel,
                 'gripper': gripper_state, 'joints':joint_poses, 'proprioception': self.gripper_proprioception()}
 
-
+    # Calculates the state of the environment
     def calc_environment_state(self):
+        '''
+        First gets the pos (xyz) and orn (q1-4) of each object in the scene, then gets play specific objects
+        in order drawer, door, button, dial. E.g, a 1 object scene will have an 11D return from this
+        Returns it as a dict of dicts, each one representing one object or 1D return in the environment
+        '''
         object_states = {}
         for i in range(0, self.num_objects):
             pos, orn = self.bullet_client.getBasePositionAndOrientation(self.objects[i])
@@ -526,7 +517,12 @@ class armSim():
 
         return object_states
 
+    
+    # Combines actor and environment state into vectors, and takes all the different slices one could want in a return dict
+    # Vector size is different depending on whether you are returning just pos, pos & orn, pos, orn & vel
+    # Most used keys will be observation (full state, no vel), achieved_goal (just environment state), desired_goal (currently specified goal)
     def calc_state(self):
+
         if self.play:
             self.updateToggles() # good place to update the toggles
         arm_state = self.calc_actor_state()
@@ -592,8 +588,9 @@ class armSim():
 
         return return_dict
 
+    # PyBullet randomly returns equivalent quaternions (e.g, one timestep it will return the -ve of the previous quat)
+    # For a smooth state signal, flip the quaternion if all elements are -ive of prev step
     def quaternion_safe_the_obs(self, obs, ag):
-
         def flip_quats(vector, last, idxs):
             for pair in idxs:
                 quat = vector[pair[0]:pair[1]]
@@ -621,47 +618,120 @@ class armSim():
         self.last_ag = ag
         return obs, ag
 
-    # 0 is most open, 1 is least
-    def close_gripper(self, amount):
-        '''
-        0 : open grippeer
-        1 : closed gripper
-        '''
-        if self.arm_type == 'Panda':
-            amount = 0.04 - amount/25 # magic numbers, magic numbers everywhere!
-            for i in [9, 10]:
+    def render(self, mode='human'):
 
-                self.bullet_client.setJointMotorControl2(self.arm, i, self.bullet_client.POSITION_CONTROL, amount,
-                                                         force=100)
+        if (mode == "human"):
+            self.render_scene = True
+            return np.array([])
+        if mode == 'rgb_array':
+            raise NotImplementedError
+
+    def close(self):
+        print('closing')
+        self.bullet_client.disconnect()
+
+    def _seed(self, seed=None):
+        print('seeding')
+        self.np_random, seed = gym.utils.seeding.np_random(seed)
+
+        return [seed]
+    
+    # Step 1.  Understand what type of action was commanded
+    def perform_action(self, action, action_type):
+        '''
+        Takes in the action, and uses the appropriate function to determie to get joint angles
+        and perform the action in the environment
+        '''
+        if action_type == 'absolute_quat':
+            targetPoses = self.absolute_quat_step(action)
+        elif action_type == 'relative_quat':
+            targetPoses = self.relative_quat_step(action)
+        elif action_type == 'relative_joints':
+            targetPoses = self.relative_joint_step(action)
+        elif action_type == 'absolute_joints':
+            targetPoses = self.absolute_joint_step(action)
+        elif action_type == 'absolute_rpy':
+            targetPoses = self.absolute_rpy_step(action)
+        elif action_type == 'relative_rpy':
+            targetPoses = self.relative_rpy_step(action)
         else:
-        # left/ right driver appears to close at 0.03
-            amount -= 0.2
-            driver = amount * 0.055
+            raise NotImplementedError
+        return targetPoses
+   
+    def absolute_quat_step(self, action):
+        assert len(action) == 8
+        
+        new_pos = action[0:3]
+        gripper = action[-1]
+        targetPoses = self.goto(new_pos, action[3:7], gripper)
+        return targetPoses
 
-            self.bullet_client.setJointMotorControl2(self.arm, 18, self.bullet_client.POSITION_CONTROL, driver,
-                                                     force=100)
-            left = self.bullet_client.getJointState(self.arm, 18)[0]
-            self.bullet_client.setJointMotorControl2(self.arm, 20, self.bullet_client.POSITION_CONTROL, left,
-                                                     force=1000)
+        # this function is only for fully funcitonal robots, will have ori and gripper
+    def relative_quat_step(self, action):
+        assert len(action) == 8
+
+        current_pos = self.bullet_client.getLinkState(self.arm, self.endEffectorIndex, computeLinkVelocity=1)[0]
+        current_orn = self.bullet_client.getLinkState(self.arm, self.endEffectorIndex, computeLinkVelocity=1)[1]
+        new_pos = action[0:3] + current_pos
+        new_orn = action[3:7] + current_orn
+        gripper = action[-1]
+        targetPoses =  self.goto(new_pos, new_orn, gripper)
+        return targetPoses
+    def absolute_rpy_step(self, action):
+        assert len(action) == 7
+        new_pos = action[0:3]
+        new_orn = action[3:6]
+        gripper = action[-1]
+        targetPoses =  self.goto(new_pos, self.bullet_client.getQuaternionFromEuler(new_orn), gripper)
+        return targetPoses
+    def relative_rpy_step(self, action):
+        assert len(action) == 7
+        current_pos = self.bullet_client.getLinkState(self.arm, self.endEffectorIndex, computeLinkVelocity=1)[0]
+        current_orn = self.bullet_client.getEulerFromQuaternion(self.bullet_client.getLinkState(self.arm, self.endEffectorIndex, computeLinkVelocity=1)[1])
+        new_pos = action[0:3] + current_pos
+        new_orn = action[3:6] + current_orn
+        gripper = action[-1]
+        targetPoses = self.goto(new_pos, self.bullet_client.getQuaternionFromEuler(new_orn), gripper)
+        return targetPoses
+
+        # take a step with an action commanded in joint space # this doesn't yet have first class support judt trying hey
+    def relative_joint_step(self, action):
+        current_poses = np.array([self.bullet_client.getJointState(self.arm, j)[0] for j in range(self.numDofs)])
+        jointPoses = action[:-1] + current_poses
+        gripper = action[-1]
+        targetPoses = self.goto_joint_poses(jointPoses, gripper)
+        return targetPoses
+    def absolute_joint_step(self, action):
+        targetPoses = self.goto_joint_poses(action[:-1], action[-1])
+        return targetPoses
+
+    # Step 1.5. Convert these to xyz quat if they are not joints
+    def goto(self, pos=None, orn=None, gripper=None):
+        '''
+        Uses PyBullet IK to solve for desired joint angles
+        We use a background, headless self to stabilise IK predictions for the UR5, the extra few cm of accuracy is worth the 
+        neglible slowdown
+        '''
+        if pos is not None and orn is not None:
 
 
-            #self.bullet_client.resetJointState(self.arm, 20, left)
+            pos = self.add_centering_offset(pos)
+            if self.arm_type == 'Panda':
+                jointPoses = self.bullet_client.calculateInverseKinematics(self.arm, self.endEffectorIndex, pos, orn, self.ll ,
+                                                                            self.ul,
+                                                                            self.jr, self.restJointPositions, maxNumIterations=200)
+            elif self.arm_type == 'UR5':
+                current_poses = np.array([self.bullet_client.getJointState(self.arm, j)[0] for j in range(self.numDofs)])
+                # print(current_poses)
+                jointPoses = self.IKSolver.calc_angles(pos,orn, current_poses)
+                # jointPoses = self.bullet_client.calculateInverseKinematics(self.arm, self.endEffectorIndex, pos, orn, ll,
+                #                                                        ul,
+                #                                                        jr, self.restJointPositions, maxNumIterations=200)
 
-            spring_link = amount * 0.5
-            self.bullet_client.setJointMotorControl2(self.arm, 12, self.bullet_client.POSITION_CONTROL, spring_link,
-                                                     force=100)
-            self.bullet_client.setJointMotorControl2(self.arm, 15, self.bullet_client.POSITION_CONTROL, spring_link,
-                                                     force=100)
+            targetPoses = self.goto_joint_poses(jointPoses, gripper)
+        return targetPoses
 
-
-            driver_mimic = amount * 0.8
-            self.bullet_client.setJointMotorControl2(self.arm, 10, self.bullet_client.POSITION_CONTROL, driver_mimic,
-                                                    force=100)
-            self.bullet_client.setJointMotorControl2(self.arm, 13, self.bullet_client.POSITION_CONTROL, driver_mimic,
-                                                     force=100)
-
-
-
+    # Step 2. Send joint commands to the robot
     def goto_joint_poses(self, jointPoses, gripper):
         indexes = [i for i in range(self.numDofs)]
         index_len = len(indexes)
@@ -680,112 +750,60 @@ class armSim():
         current_poses = np.array([self.bullet_client.getJointState(self.arm, j)[0] for j in range(index_len)])
         targetPoses = np.clip(targetPoses, current_poses-inc, current_poses+inc)
         self.bullet_client.setJointMotorControlArray(self.arm, indexes, self.bullet_client.POSITION_CONTROL,
-                                                     targetPositions=targetPoses ,
-                                                     forces=[240.]*len(indexes))
+                                                        targetPositions=targetPoses ,
+                                                        forces=[240.]*len(indexes))
 
         if gripper is not None:
             self.close_gripper(gripper)
 
         return targetPoses
 
+    # Command to control the gripper from 0-1
+    def close_gripper(self, amount):
+        '''
+        0 : open grippeer
+        1 : closed gripper
+        '''
+        if self.arm_type == 'Panda':
+            amount = 0.04 - amount/25 # magic numbers, magic numbers everywhere!
+            for i in [9, 10]:
 
-    def goto(self, pos=None, orn=None, gripper=None):
+                self.bullet_client.setJointMotorControl2(self.arm, i, self.bullet_client.POSITION_CONTROL, amount,
+                                                            force=100)
+        else:
+        # left/ right driver appears to close at 0.03
+            amount -= 0.2
+            driver = amount * 0.055
 
-        if pos is not None and orn is not None:
-
-
-            pos = self.add_centering_offset(pos)
-            if self.arm_type == 'Panda':
-                jointPoses = self.bullet_client.calculateInverseKinematics(self.arm, self.endEffectorIndex, pos, orn, self.ll ,
-                                                                           self.ul,
-                                                                           self.jr, self.restJointPositions, maxNumIterations=200)
-            elif self.arm_type == 'UR5':
-                current_poses = np.array([self.bullet_client.getJointState(self.arm, j)[0] for j in range(self.numDofs)])
-                # print(current_poses)
-                jointPoses = self.IKSolver.calc_angles(pos,orn, current_poses)
-                # jointPoses = self.bullet_client.calculateInverseKinematics(self.arm, self.endEffectorIndex, pos, orn, ll,
-                #                                                        ul,
-                #                                                        jr, self.restJointPositions, maxNumIterations=200)
-
-            targetPoses = self.goto_joint_poses(jointPoses, gripper)
-        return targetPoses
-
-    def absolute_quat_step(self, action):
-
-        assert len(action) == 8
-        
-        new_pos = action[0:3]
-        gripper = action[-1]
-        targetPoses = self.goto(new_pos, action[3:7], gripper)
-        return targetPoses
-
-        # this function is only for fully funcitonal robots, will have ori and gripper
-    def relative_quat_step(self, action):
-        assert len(action) == 8
-
-        current_pos = self.bullet_client.getLinkState(self.arm, self.endEffectorIndex, computeLinkVelocity=1)[0]
-        current_orn = self.bullet_client.getLinkState(self.arm, self.endEffectorIndex, computeLinkVelocity=1)[1]
-        new_pos = action[0:3] + current_pos
-        new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
-        new_orn = action[3:7] + current_orn
-        gripper = action[-1]
-        targetPoses = self.goto(new_pos, new_orn, gripper)
-        return targetPoses
-
-    def absolute_rpy_step(self, action):
-        assert len(action) == 7
-        new_pos = action[0:3]
-        #new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
-        new_orn = action[3:6]
-        gripper = action[-1]
-        targetPoses = self.goto(new_pos, self.bullet_client.getQuaternionFromEuler(new_orn), gripper)
-        return targetPoses
-
-    def relative_rpy_step(self, action):
-        assert len(action) == 7
-
-        current_pos = self.bullet_client.getLinkState(self.arm, self.endEffectorIndex, computeLinkVelocity=1)[0]
-        current_orn = self.bullet_client.getEulerFromQuaternion(self.bullet_client.getLinkState(self.arm, self.endEffectorIndex, computeLinkVelocity=1)[1])
-        new_pos = action[0:3] + current_pos
-        new_pos = np.clip(new_pos, self.env_lower_bound, self.env_upper_bound)
-        new_orn = action[3:6] + current_orn
-        gripper = action[-1]
-        targetPoses = self.goto(new_pos, self.bullet_client.getQuaternionFromEuler(new_orn), gripper)
-        return targetPoses
-
-        # take a step with an action commanded in joint space # this doesn't yet have first class support judt trying hey
-    def relative_joint_step(self, action):
-        current_poses = np.array([self.bullet_client.getJointState(self.arm, j)[0] for j in range(self.numDofs)])
-        jointPoses = action[:-1] + current_poses
-        gripper = action[-1]
-        targetPoses = self.goto_joint_poses(jointPoses, gripper)
-        return targetPoses
-
-    def absolute_joint_step(self, action):
-        targetPoses = self.goto_joint_poses( action[:-1], action[-1])
-        return targetPoses
-
-    def render(self, mode='human'):
-
-        if (mode == "human"):
-            self.render_scene = True
-            return np.array([])
-        if mode == 'rgb_array':
-            raise NotImplementedError
-
-    def close(self):
-        print('closing')
-        self.bullet_client.disconnect()
-
-    def _seed(self, seed=None):
-        print('seeding')
-        self.np_random, seed = gym.utils.seeding.np_random(seed)
-
-        return [seed]
+            self.bullet_client.setJointMotorControl2(self.arm, 18, self.bullet_client.POSITION_CONTROL, driver,
+                                                        force=100)
+            left = self.bullet_client.getJointState(self.arm, 18)[0]
+            self.bullet_client.setJointMotorControl2(self.arm, 20, self.bullet_client.POSITION_CONTROL, left,
+                                                        force=1000)
 
 
+            #self.bullet_client.resetJointState(self.arm, 20, left)
 
-class pandaEnv(gym.GoalEnv):
+            spring_link = amount * 0.5
+            self.bullet_client.setJointMotorControl2(self.arm, 12, self.bullet_client.POSITION_CONTROL, spring_link,
+                                                        force=100)
+            self.bullet_client.setJointMotorControl2(self.arm, 15, self.bullet_client.POSITION_CONTROL, spring_link,
+                                                        force=100)
+
+
+            driver_mimic = amount * 0.8
+            self.bullet_client.setJointMotorControl2(self.arm, 10, self.bullet_client.POSITION_CONTROL, driver_mimic,
+                                                    force=100)
+            self.bullet_client.setJointMotorControl2(self.arm, 13, self.bullet_client.POSITION_CONTROL, driver_mimic,
+                                                        force=100)
+
+'''
+The main gym env.
+This was originally set up to support RL, so that you could have many many 'instances' at different position in the 
+world (using the 'offset' arg). It currently only supports one instance, but would be easy to adapt to multiple instances
+with loops inside step, activate physics client, and compute reward functions
+'''
+class playEnv(gym.GoalEnv):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second': 60
@@ -817,27 +835,27 @@ class pandaEnv(gym.GoalEnv):
         # TODO actually clip input actions by this amount!!!!!!!!
         pos_step = 0.015
         orn_step = 0.1
-        if self.action_type == 'absolute_quat':
+        if action_type == 'absolute_quat':
             pos_step = 1.0
             if self.use_orientation:
                 high = np.array([pos_step,pos_step,pos_step,1,1,1,1,1]) # use absolute orientations
             else:
                 high = np.array([pos_step, pos_step, pos_step, 1])
-        elif self.action_type == 'relative_joints':
+        elif action_type == 'relative_quat':
+            high = np.array([1, 1, 1, 1, 1, 1,1, 1])
+        elif action_type == 'relative_joints':
             if self.arm_type == 'UR5':
                 high = np.array([1,1,1,1,1,1, 1])
             else:
                 high = np.array([1,1,1,1,1,1,1, 1])
-        elif self.action_type == 'absolute_joints':
+        elif action_type == 'absolute_joints':
             if self.arm_type == 'UR5':
                 high = np.array([6, 6, 6, 6, 6, 6, 1])
             else:
                 high = np.array([6, 6, 6, 6, 6, 6, 6, 1])
-        elif self.action_type == 'relative_quat':
-            high = np.array([1, 1, 1, 1, 1, 1,1, 1])
-        elif self.action_type == 'absolute_rpy':
+        elif action_type == 'absolute_rpy':
             high = np.array([6, 6, 6, 6, 6, 6, 1])
-        elif self.action_type == 'relative_rpy':
+        elif action_type == 'relative_rpy':
             high = np.array([1,1,1,1,1,1, 1])
         else:
             if self.use_orientation:
@@ -900,7 +918,7 @@ class pandaEnv(gym.GoalEnv):
             self.compute_reward = self.compute_reward_sparse
 
 
-
+    # Resets the instances until reward is not satisfied
     def reset(self, o = None, vr =None):
 
         if not self.physics_client_active:
@@ -911,70 +929,40 @@ class pandaEnv(gym.GoalEnv):
         while r > -1:
             # reset again if we init into a satisfied state
 
-            self.arm.reset(o)
-            obs = self.arm.calc_state()
+            self.instance.reset(o)
+            obs = self.instance.calc_state()
             r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
 
         return obs
 
+    # Directly reset the goal position
     def reset_goal_pos(self, goal):
-        self.arm.reset_goal_pos(goal)
+        self.instance.reset_goal_pos(goal)
 
+    # Sets whether to render the scene
+    # Img will be returned as part of the state which comes from obs, 
+    # rather than from calling .render(rgb) every time as in some other envs
     def render(self, mode):
         if (mode == "human"):
             self.render_scene = True
             return np.array([])
         if mode == 'rgb_array':
-            raise NotImplementedError
+            self.instance.record_images = True
         if mode == 'playback':
-            self.arm.record_images = True
+            self.instance.record_images = True
 
-    def absolute_command(self, pos, ori):
-        ori = p.getQuaternionFromEuler(ori)
-        self.arm.goto(pos,ori)
-        self.arm.runSimulation()
-
-
-
-
-    def step(self, action= None):
-        #bound the action to within allowable limits
+    # Classic dict-env .step function
+    def step(self, action):
         action = np.clip(action, self.action_space.low, self.action_space.high)
-        if self.action_type == 'absolute_quat':
-            targetPoses = self.arm.absolute_quat_step(action)
-        elif self.action_type == 'relative_joints':
-            targetPoses = self.arm.relative_joint_step(action)
-        elif self.action_type == 'absolute_joints':
-            targetPoses = self.arm.absolute_joint_step(action)
-        elif self.action_type == 'relative_quat':
-            targetPoses = self.arm.relative_quat_step(action)
-        elif self.action_type == 'absolute_rpy':
-            targetPoses = self.arm.absolute_rpy_step(action)
-        elif self.action_type == 'relative_rpy':
-            targetPoses = self.arm.relative_rpy_step(action)
-        else:
-            targetPoses = self.arm.step(action)
-
-        self.arm.runSimulation()
-            # this is out here because the multiprocessing version will step everyone simulataneously.
-
-        # if self.render_scene:
-        #     time.sleep(self.timeStep*3)
-
-        obs = self.arm.calc_state()
+        targetPoses = self.instance.perform_action(action, self.action_type)
+        self.instance.runSimulation()
+        obs = self.instance.calc_state()
         r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
         done = False
         success = 0 if r < 0 else 1
-        for i,o in self.arm.calc_environment_state().items():
-
-            if (o['pos'] > self.env_upper_bound).any() or (o['pos'] < self.env_lower_bound).any():
-                done = True
-                r = -100
-
-
-
         return obs, r, done, {'is_success': success, 'target_poses': targetPoses}
 
+    # Activates the GUI or headless physics client, and creates arm instance within it
     def activate_physics_client(self, vr=None):
 
         if self.render_scene:
@@ -988,10 +976,6 @@ class pandaEnv(gym.GoalEnv):
         else:
             self.p = bullet_client.BulletClient(connection_mode=p.DIRECT)
 
-
-        #self.p.setPhysicsEngineParameter(maxNumCmdPer1ms=1000)
-        # self.p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=45, cameraPitch=-90,
-        #                              cameraTargetPosition=[0.35, -0.13, 0])
         self.p.setAdditionalSearchPath(pd.getDataPath())
 
         self.p.setTimeStep(self.timeStep)
@@ -1004,46 +988,42 @@ class pandaEnv(gym.GoalEnv):
                 scene = default_scene
             elif self.num_objects == 1:
                 scene = push_scene
-        self.arm = armSim(self.p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
+        self.instance = instance(self.p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
                                         self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
                                         self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,  self.use_orientation, self.return_velocity,
                                          self.render_scene, fixed_gripper=self.fixed_gripper, 
                                         play=self.play, show_goal = self.show_goal, num_objects=self.num_objects, arm_type=self.arm_type)
-        self.arm.control_dt = self.timeStep
+        self.instance.control_dt = self.timeStep
         self.p.resetDebugVisualizerCamera(distance, yaw, pitch, lookat)
 
+    # With VR, a physics server is already created - this connects to it
     def vr_activation(self, vr=None):
-        #self.p = bullet_client.BulletClient(connection_mode=p.GUI)
         self.p = bullet_client.BulletClient(connection_mode=p.SHARED_MEMORY)
 
-        # self.p.setPhysicsEngineParameter(maxNumCmdPer1ms=1000)
-        # self.p.resetDebugVisualizerCamera(cameraDistance=1.3, cameraYaw=38, cameraPitch=-22,
-        #                              cameraTargetPosition=[0.35, -0.13, 0])
         self.p.setAdditionalSearchPath(pd.getDataPath())
 
         self.p.setTimeStep(self.timeStep)
         self.p.setGravity(0, 0, -9.8)
         scene = complex_scene
-        self.arm = armSim(self.p, [0, 0, 0], scene, self.arm_lower_lim, self.arm_upper_lim,
+        self.instance = instance(self.p, [0, 0, 0], scene, self.arm_lower_lim, self.arm_upper_lim,
                                   self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
                                   self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,
                                   self.use_orientation, self.return_velocity,
                                   self.render_scene, fixed_gripper=self.fixed_gripper,
                                   play=self.play, num_objects=self.num_objects, arm_type=self.arm_type)
-        self.arm.control_dt = self.timeStep
+        self.instance.control_dt = self.timeStep
         self.physics_client_active = True
-
-
-
 
 
     def calc_target_distance(self, achieved_goal, desired_goal):
         distance = np.linalg.norm(achieved_goal - desired_goal)
         return distance
 
+    # A basic dense reward metric, distance from goal state
     def compute_reward(self, achieved_goal, desired_goal):
         return -self.calc_target_distance(achieved_goal,desired_goal)
 
+    # A piecewise reward function, for each object it determines if all dims are within the threshold and increments reward if so
     def compute_reward_sparse(self, achieved_goal, desired_goal, info=None):
 
         initially_vectorized = True
@@ -1069,281 +1049,11 @@ class pandaEnv(gym.GoalEnv):
         else:
             return reward
 
+    # Env level sub goal visualisation and deletion 
     def visualise_sub_goal(self, sub_goal, sub_goal_state = 'full_positional_state'):
-        self.arm.visualise_sub_goal(sub_goal, sub_goal_state = sub_goal_state)
+        self.instance.visualise_sub_goal(sub_goal, sub_goal_state = sub_goal_state)
 
     def delete_sub_goal(self):
-        self.arm.delete_sub_goal()
+        self.instance.delete_sub_goal()
 
 
-
-class pandaReach(pandaEnv):
-	def __init__(self, num_objects = 0):
-		super().__init__(num_objects=num_objects, use_orientation=False)
-
-class pandaPush(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-0.18, -0.18, -0.055], env_range_high = [0.18, 0.18, -0.04],  goal_range_low=[-0.1, -0.1, -0.06], goal_range_high = [0.1, 0.1, -0.05], use_orientation=False): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = goal_range_low, obj_upper_bound = goal_range_high) # in push restrict the inti positions slightly.
-
-class pandaPick(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-0.18, -0.18, -0.055], env_range_high = [0.18, 0.18, 0.2],  goal_range_low=[-0.18, -0.18, 0.0], goal_range_high = [0.18, 0.18, 0.1], use_orientation=False): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = goal_range_low, obj_upper_bound = goal_range_high)
-
-class pandaReach2D(pandaEnv):
-	def __init__(self, num_objects = 0, env_range_low = [-0.18, -0.18, -0.07], env_range_high = [0.18, 0.18, 0.0],  goal_range_low=[-0.18, -0.18, -0.06], goal_range_high = [0.18, 0.18, -0.05], use_orientation=False): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high, goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation)
-
-class pandaPlay(pandaEnv):
-	def __init__(self, num_objects = 2, env_range_low = [-1.0, -1.0, -0.4], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='absolute_quat', show_goal=False)
-
-
-class pandaPlayRelJoints(pandaEnv):
-	def __init__(self, num_objects = 2, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_joints', show_goal=False)
-
-class pandaPlayRelJoints1Obj(pandaEnv):
-    def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-        super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                        goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                        obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_joints', show_goal=False)
-
-class pandaPlayAbsJoints1Obj(pandaEnv):
-    def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-        super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                        goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                        obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='absolute_joints', show_goal=False)
-
-
-class pandaPlay1Obj(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='absolute_quat', show_goal=False)
-
-class pandaPlayRel1Obj(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False, max_episode_steps=None, play=True, action_type='relative_quat', show_goal=False)
-
-class pandaPlayAbsRPY1Obj(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
-                         max_episode_steps=None, play=True, action_type='absolute_rpy', show_goal=False)
-
-class pandaPlayRelRPY1Obj(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
-                          max_episode_steps=None, play=True, action_type='relative_rpy', show_goal=False)
-
-
-class UR5Reach(pandaEnv):
-	def __init__(self, num_objects = 0):
-		super().__init__(num_objects=num_objects, use_orientation=False, arm_type='UR5')
-
-class UR5PlayAbsRPY1Obj(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
-                         max_episode_steps=None, play=True, action_type='absolute_rpy', show_goal=False, arm_type='UR5')
-
-class UR5PlayRelRPY1Obj(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
-                          max_episode_steps=None, play=True, action_type='relative_rpy', show_goal=False, arm_type='UR5')
-
-class UR5PlayRelJoints1Obj(pandaEnv):
-    def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-        super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                        goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                        obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
-                         max_episode_steps=None, play=True, action_type='relative_joints', show_goal=False, arm_type='UR5')
-
-class UR5PlayAbsJoints1Obj(pandaEnv):
-    def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-        super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                        goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                        obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
-                         max_episode_steps=None, play=True, action_type='absolute_joints', show_goal=False, arm_type='UR5')
-
-
-class UR5Play1Obj(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
-                         max_episode_steps=None, play=True, action_type='absolute_quat', show_goal=False, arm_type='UR5')
-
-class UR5PlayRel1Obj(pandaEnv):
-	def __init__(self, num_objects = 1, env_range_low = [-1.0, -1.0, -0.2], env_range_high = [1.0, 1.0, 1.0],
-                 goal_range_low= [-0.18, 0, 0.05], goal_range_high = [0.18, 0.3, 0.1], use_orientation=True): # recall that y is up
-		super().__init__(num_objects=num_objects, env_range_low = env_range_low, env_range_high = env_range_high,
-                         goal_range_low=goal_range_low, goal_range_high=goal_range_high, use_orientation=use_orientation,
-                         obj_lower_bound = [-0.18, 0, 0.05], obj_upper_bound = [0.18, 0.3, 0.1], return_velocity=False,
-                         max_episode_steps=None, play=True, action_type='relative_quat', show_goal=False, arm_type='UR5')
-
-def add_xyz_rpy_controls(panda):
-    controls = []
-    orn = panda.arm.default_arm_orn_RPY
-    controls.append(panda.p.addUserDebugParameter("X", -1, 1, 0))
-    controls.append(panda.p.addUserDebugParameter("Y", -1, 1, 0.00))
-    controls.append(panda.p.addUserDebugParameter("Z", -1, 1, 0.2))
-    controls.append(panda.p.addUserDebugParameter("R", -4, 4, orn[0]))
-    controls.append(panda.p.addUserDebugParameter("P", -4, 4, orn[1]))
-    controls.append(panda.p.addUserDebugParameter("Y", -4,4, orn[2]))
-    controls.append(panda.p.addUserDebugParameter("grip", panda.action_space.low[-1], panda.action_space.high[-1], 0))
-    return controls
-
-def add_joint_controls(panda):
-
-    for i, obj in enumerate(panda.arm.restJointPositions):
-        panda.p.addUserDebugParameter(str(i), -2*np.pi, 2*np.pi, obj)
-
-
-
-
-
-
-def main():
-    joint_control = False #Tru
-    panda = UR5PlayAbsRPY1Obj()
-    #panda = UR5Reach()
-    #panda = pandaPlayAbsRPY1Obj()
-    
-    panda.render(mode='human')
-    panda.reset()
-    if joint_control:
-
-        add_joint_controls(panda)
-    else:
-
-        controls = add_xyz_rpy_controls(panda)
-
-    panda.render(mode='human')
-    panda.reset()
-
-    for i in range(1000000):
-
-        
-    
-
-        if joint_control:
-            poses  = []
-            for i in range(0, len(panda.arm.restJointPositions)):
-                poses.append(panda.p.readUserDebugParameter(i))
-
-            poses[0:len(panda.arm.ul)] = np.clip(poses[0:len(panda.arm.ul)], panda.arm.ll, panda.arm.ul)
-            panda.arm.reset_arm_joints(panda.arm.arm, poses)
-            print(p.getEulerFromQuaternion(panda.arm.calc_actor_state()['orn']))
-
-        else:
-            action = []
-            for i in range(0, len(controls)):
-                action.append(panda.p.readUserDebugParameter(i))
-
-
-            #panda.absolute_command(action[0:3], action[3:6])
-            state = panda.arm.calc_actor_state()
-
-            # gripper_one = np.array(panda.arm.bullet_client.getLinkState(panda.arm.arm, 18)[0])
-            # gripper_two = np.array(panda.arm.bullet_client.getLinkState(panda.arm.arm, 20)[0])
-            # ee  = np.array(panda.arm.bullet_client.getLinkState(panda.arm.arm, panda.arm.endEffectorIndex)[0])
-            # wrist = np.array(panda.arm.bullet_client.getLinkState(panda.arm.arm, panda.arm.endEffectorIndex-1)[0])
-            # avg_gripper = (gripper_one+gripper_two)/2
-            # ee_back = ee - (ee-wrist)*0.5
-            # avg_gripper += (ee-wrist)*0.2
-
-            # vector = gripper_two - gripper_one
-            # gripper_one = gripper_one + 0.15 * vector
-            #
-            #
-            # obj_id, link_index, hit_fraction, hit_position, hit_normal = panda.arm.bullet_client.rayTest(ee_back, avg_gripper)[0]
-            # print(link_index, hit_fraction)
-            # panda.arm.bullet_client.addUserDebugLine(ee_back, avg_gripper, [1,0,0], 0.5, 1)
-
-            #pos_change = action[0:3] - state['pos']
-            # des_ori = panda.arm.default_arm_orn #  np.array(action[3:6])
-            #des_ori = p.getQuaternionFromEuler(action[3:6])
-            # ori_change =  des_ori - np.array(p.getEulerFromQuaternion(np.array(state['orn'])))
-            #
-            #action = np.concatenate([action[0:3], des_ori, [action[6]]])
-            obs, r, done, info = panda.step(np.array(action))
-            print(r)
-            #print(obs['obs_rpy'][6])
-            #print(obs['achieved_goal'][7:])
-            #print(p.getEulerFromQuaternion(state['orn']))
-            x = obs['achieved_goal']
-            x[2] += 0.1
-            panda.visualise_sub_goal(obs['achieved_goal'], sub_goal_state='achieved_goal')
-            #print(obs['joints'])
-            #print(state['pos'], obs['observation'][-4:])
-
-        #time.sleep(0.01)
-
-
-# def main():
-#     panda = pandaPick()
-#     controls = []
-
-#     panda.render(mode='human')
-#     panda.reset()
-#     controls.append(panda.p.addUserDebugParameter("X", panda.action_space.low[0], panda.action_space.high[0], 0))
-#     controls.append(panda.p.addUserDebugParameter("Y", panda.action_space.low[1], panda.action_space.high[1], 0.00))
-#     controls.append(panda.p.addUserDebugParameter("Z", panda.action_space.low[2], panda.action_space.high[2], 0))
-#     controls.append(panda.p.addUserDebugParameter("grip", panda.action_space.low[3], panda.action_space.high[3], 0))
-#     state_control = False #True
-
-#     if state_control:
-#         panda.activate_human_interactive_mode()
-
-#     for i in range(100000):
-#         panda.reset()
-#         #time.sleep(10)
-#         #panda.visualise_sub_goal(np.array([0,0,0,0.04]), 'controllable_achieved_goal')
-#         for j in range(0, 150):
-
-#             action = []
-#             if state_control:
-#                 panda.step()
-#                 time.sleep(0.005)
-#             else:
-#                 for i in range(0, len(controls)):
-#                     action.append(panda.p.readUserDebugParameter(i))
-#                 #action = panda.action_space.sample()
-#                 obs, r, done, info = panda.step(np.array(action))
-#                 #print(obs['achieved_goal'], obs['desired_goal'], r)
-#                 print(r)
-#                 time.sleep(0.01)
-
-
-if __name__ == "__main__":
-    main()

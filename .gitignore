@@ -1,5 +1,5 @@
-/pandaRL.egg-info/*
-/pandaRL/envs/__pycache__/*
-/pandaRL/envs/collected_data/*
+/roboticsPlayroomPybullet.egg-info/*
+/roboticsPlayroomPybullet/envs/__pycache__/*
+/roboticsPlayroomPybullet/envs/collected_data/*
 /.idea/*
 /__pycache__/*

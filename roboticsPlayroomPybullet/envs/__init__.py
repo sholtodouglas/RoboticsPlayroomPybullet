@@ -1,7 +1,6 @@
 from roboticsPlayroomPybullet.envs.environments import pandaReach
 from roboticsPlayroomPybullet.envs.environments import pandaReach2D
 from roboticsPlayroomPybullet.envs.environments import pandaPush
-from roboticsPlayroomPybullet.envs.environments import pointMassEnv
 from roboticsPlayroomPybullet.envs.environments import pandaPick
 from roboticsPlayroomPybullet.envs.environments import pandaPlay
 from roboticsPlayroomPybullet.envs.environments import pandaPlay1Obj

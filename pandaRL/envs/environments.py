@@ -528,25 +528,28 @@ class pointMassSim():
 
 
     def gripper_proprioception(self):
-        gripper_one = np.array(self.bullet_client.getLinkState(self.panda, 18)[0])
-        gripper_two = np.array(self.bullet_client.getLinkState(self.panda, 20)[0])
-        ee = np.array(self.bullet_client.getLinkState(self.panda, self.endEffectorIndex)[0])
-        wrist = np.array(self.bullet_client.getLinkState(self.panda, self.endEffectorIndex - 1)[0])
-        avg_gripper = (gripper_one + gripper_two) / 2
-        point_one = ee - (ee - wrist) * 0.5 # far up
-        point_two = avg_gripper + (ee - wrist) * 0.2 # between the prongs
+        if self.arm_type == 'UR5':
+            gripper_one = np.array(self.bullet_client.getLinkState(self.panda, 18)[0])
+            gripper_two = np.array(self.bullet_client.getLinkState(self.panda, 20)[0])
+            ee = np.array(self.bullet_client.getLinkState(self.panda, self.endEffectorIndex)[0])
+            wrist = np.array(self.bullet_client.getLinkState(self.panda, self.endEffectorIndex - 1)[0])
+            avg_gripper = (gripper_one + gripper_two) / 2
+            point_one = ee - (ee - wrist) * 0.5 # far up
+            point_two = avg_gripper + (ee - wrist) * 0.2 # between the prongs
 
-        try:
-            obj_id, link_index, hit_fraction, hit_position, hit_normal = self.bullet_client.rayTest(point_one, point_two)[0]
-            #print(link_index, hit_fraction)
-            #self.bullet_client.addUserDebugLine(gripper_one, gripper_two, [1,0,0], 0.5, 1)
-            
-            if hit_fraction == 1.0 or link_index == 18 or link_index == 20:
-                return 0 # nothing in the hand
-            else:
-                return 1 # something in the way, oooh, something in the way
-        except:
-            return -1 # this shouldn't ever happen because the ray will always hit the other side of the gripper
+            try:
+                obj_id, link_index, hit_fraction, hit_position, hit_normal = self.bullet_client.rayTest(point_one, point_two)[0]
+                #print(link_index, hit_fraction)
+                #self.bullet_client.addUserDebugLine(gripper_one, gripper_two, [1,0,0], 0.5, 1)
+                
+                if hit_fraction == 1.0 or link_index == 18 or link_index == 20:
+                    return 0 # nothing in the hand
+                else:
+                    return 1 # something in the way, oooh, something in the way
+            except:
+                return -1 # this shouldn't ever happen because the ray will always hit the other side of the gripper
+        else:
+            return -1
 
 
     def calc_actor_state(self):
@@ -1441,7 +1444,8 @@ def add_joint_controls(panda):
 
 def main():
     joint_control = False #Tru
-    panda = UR5PlayAbsRPY1Obj()
+    # panda = UR5PlayAbsRPY1Obj()
+    panda = pandaPlayAbsRPY1Obj()
     panda.render(mode='human')
     panda.reset()
     if joint_control:

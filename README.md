@@ -1,11 +1,13 @@
 
-Environments to support https://github.com/sholtodouglas/learning_from_play
+Environments to support https://github.com/sholtodouglas/learning_from_play and reinforcement learning for robotic manipulation.
 
 [An example playing out the teleop data](https://github.com/sholtodouglas/learning_from_play/blob/ecd16531422e6e123d22aa58a6abd5d9dc08abfa/notebooks/Minimal%20Example.ipynb), this example replays the teleop data and also showcases the functionality of the env as an RL environment (reset goal, visualise goal, sparse reward function etc).
 
 [An example where you can use the GUI to control the robot](https://github.com/sholtodouglas/RoboticsPlayroomPybullet/blob/280818586cf001599110acaddb78d216d5056914/roboticsPlayroomPybullet/envs/interactive.py)
 
 [A more involved example](https://github.com/sholtodouglas/learning_from_play/blob/ecd16531422e6e123d22aa58a6abd5d9dc08abfa/notebooks/Deploy.ipynb), which shows how a test rig is used to reset the environment to specific locations and test goals, and plays a pretrained model.
+
+[The file to run if you want to teleoperate new trajectories](https://github.com/sholtodouglas/learning_from_play/blob/77be8ecd9f6c5a730c49b502ca56f2f26f938d6c/data_collection/vr_data_collection.py), this works with any VR headset which can interface with steamVR. Instructions are within the file.
 
 This is an overview of the code, the comments should guide you into understanding any pieces you wish to modify. 
 ![alt-text-1](/roboticsPlayroomPybullet/readme_assets/code.png "side by side comparison")

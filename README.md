@@ -12,11 +12,8 @@ This is an overview of the code, the comments should guide you into understandin
 
 
 ### UR5PlayAbsRPY1Obj-v0
-<p align="center">
-	<a href="https://sholtodouglas.github.io/images/play/headline.gif">
-		<img src="readme_assets/headline.gif">
-	</a>
-</p>
+
+![alt-text-1](/roboticsPlayroomPybullet/readme_assets/headline.gif "side by side comparison")
 
 
 The environment also supports a number of more basic test environments, and other arms. The full list of these is defined in the gym registry here at - roboticsPlayroomPybullet/__init__.py. E.g.

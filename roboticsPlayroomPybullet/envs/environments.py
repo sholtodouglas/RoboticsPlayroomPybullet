@@ -46,9 +46,6 @@ def gripper_camera(bullet_client, pos, ori):
     img = bullet_client.getCameraImage(200, 200, view_matrix_gripper, projectionMatrix,shadow=0, flags = bullet_client.ER_NO_SEGMENTATION_MASK, renderer=p.ER_BULLET_HARDWARE_OPENGL)
     return img
 
-# An instance of the environment. Multiples of these can be placed in the same 
-# 'env' by using the offset parameter - and obs/acts will be placed into the offsetby the
-# add/subtract centering offset functions. 
 
 '''
 The main gym env.
@@ -314,6 +311,9 @@ class playEnv(gym.GoalEnv):
         except:
             pass
 
+# An instance of the environment. Multiples of these can be placed in the same 
+# 'env' by using the offset parameter - and obs/acts will be placed into the offsetby the
+# add/subtract centering offset functions. 
 
 class instance():
     def __init__(self, bullet_client, offset, load_scene, arm_lower_lim, arm_upper_lim,

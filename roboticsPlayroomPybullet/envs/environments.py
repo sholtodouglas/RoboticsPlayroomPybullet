@@ -15,7 +15,7 @@ urdfRoot = pybullet_data.getDataPath()
 import gym.spaces as spaces
 import math
 from scenes import *
-
+from playRewardFunc import success_func
 from inverseKinematics import InverseKinematicsSolver
 
 lookat = [0, 0.0, 0.0]
@@ -49,6 +49,271 @@ def gripper_camera(bullet_client, pos, ori):
 # An instance of the environment. Multiples of these can be placed in the same 
 # 'env' by using the offset parameter - and obs/acts will be placed into the offsetby the
 # add/subtract centering offset functions. 
+
+'''
+The main gym env.
+This was originally set up to support RL, so that you could have many many instances (1 arm + tabltop env) at different positions in the 
+world (using the 'offset' arg each time you created one). It currently only supports one instance, but would be easy to adapt to multiple instances
+with loops inside step, activate physics client, and compute reward functions
+'''
+class playEnv(gym.GoalEnv):
+    metadata = {
+        'render.modes': ['human', 'rgb_array'],
+        'video.frames_per_second': 60
+    }
+
+    def __init__(self, num_objects = 0, env_range_low = [-0.18, -0.18,-0.05 ], env_range_high = [0.18, 0.18, 0.15], goal_range_low = [-0.18, -0.18, -0.05], goal_range_high = [0.18, 0.18, 0.05],
+                 obj_lower_bound = [-0.18, -0.18, -0.05], obj_upper_bound = [-0.18, -0.18, -0.05], sparse=True, use_orientation=False,
+                 sparse_rew_thresh=0.05, fixed_gripper = False, return_velocity=True, max_episode_steps=250, 
+                 play=False, action_type = 'absolute_rpy', show_goal=True, arm_type= 'Panda'): # action type can be relative, absolute, or joint relative
+        fps = 300
+        self.timeStep = 1. / fps
+        self.render_scene = False
+        self.physics_client_active = 0
+        self.num_objects  = num_objects
+        self.use_orientation = use_orientation
+        self.return_velocity = return_velocity
+        self.fixed_gripper = fixed_gripper
+        self.sparse_reward_threshold = sparse_rew_thresh
+        self.num_goals = max(self.num_objects, 1)
+        self.play = play
+        self.action_type = action_type
+        self.show_goal = show_goal
+        self.arm_type = arm_type
+        obs_dim = 8
+        self.sparse_rew_thresh = sparse_rew_thresh
+        self._max_episode_steps = max_episode_steps
+
+        obs_dim += 7 * num_objects  # pos and vel of the other pm that we are knocking around.
+        # TODO actually clip input actions by this amount!!!!!!!!
+        pos_step = 0.015
+        orn_step = 0.1
+        if action_type == 'absolute_quat':
+            pos_step = 1.0
+            if self.use_orientation:
+                high = np.array([pos_step,pos_step,pos_step,1,1,1,1,1]) # use absolute orientations
+            else:
+                high = np.array([pos_step, pos_step, pos_step, 1])
+        elif action_type == 'relative_quat':
+            high = np.array([1, 1, 1, 1, 1, 1,1, 1])
+        elif action_type == 'relative_joints':
+            if self.arm_type == 'UR5':
+                high = np.array([1,1,1,1,1,1, 1])
+            else:
+                high = np.array([1,1,1,1,1,1,1, 1])
+        elif action_type == 'absolute_joints':
+            if self.arm_type == 'UR5':
+                high = np.array([6, 6, 6, 6, 6, 6, 1])
+            else:
+                high = np.array([6, 6, 6, 6, 6, 6, 6, 1])
+        elif action_type == 'absolute_rpy':
+            high = np.array([6, 6, 6, 6, 6, 6, 1])
+        elif action_type == 'relative_rpy':
+            high = np.array([1,1,1,1,1,1, 1])
+        else:
+            if self.use_orientation:
+                high = np.array([pos_step, pos_step, pos_step, orn_step,orn_step,orn_step, 1])
+            else:
+                high = np.array([pos_step, pos_step, pos_step, 1])
+        self.action_space = spaces.Box(-high, high)
+        
+
+        self.env_upper_bound = np.array(env_range_high)
+        self.env_lower_bound = np.array(env_range_low)
+        #self.env_lower_bound[1] = 0  # set the y (updown) min to 0.
+        self.goal_upper_bound = np.array(goal_range_high)
+        self.goal_lower_bound = np.array(goal_range_low)
+        #self.goal_lower_bound[1] = 0  # set the y (updown) min to 0.
+
+        self.obj_lower_bound = obj_lower_bound
+        self.obj_upper_bound = obj_upper_bound
+
+        if use_orientation:
+            self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 1, 0.04])])
+            self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([1, 1, 1, 1, 0.0])])
+            arm_upper_obs_lim = np.concatenate(
+                [self.env_upper_bound, np.array([1, 1, 1, 1, 1, 1, 1, 0.04])])  # includes velocity
+            arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1, 1, 1, 1, 1, 0.0])])
+            obj_upper_lim = np.concatenate([self.obj_upper_bound, np.ones(7)]) # velocity and orientation
+            obj_lower_lim = np.concatenate([self.obj_lower_bound, -np.ones(7)]) # velocity and orientation
+            obj_upper_positional_lim = np.concatenate([self.env_upper_bound, np.ones(4)])
+            obj_lower_positional_lim = np.concatenate([self.env_lower_bound, -np.ones(4)])
+        else:
+            self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([0.04])])
+            self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([0.0])])
+            arm_upper_obs_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 0.04])])  # includes velocity
+            arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1, 0.0])])
+            obj_upper_lim = np.concatenate([self.obj_upper_bound, np.ones(3)])
+            obj_lower_lim =  np.concatenate([self.obj_lower_bound, -np.ones(3)])
+            obj_upper_positional_lim = self.env_upper_bound
+            obj_lower_positional_lim = self.env_lower_bound
+
+        upper_obs_dim = np.concatenate([arm_upper_obs_lim] + [obj_upper_lim] * self.num_objects)
+        lower_obs_dim = np.concatenate([arm_lower_obs_lim] + [obj_lower_lim] * self.num_objects)
+        upper_goal_dim = np.concatenate([self.env_upper_bound] * self.num_goals)
+        lower_goal_dim = np.concatenate([self.env_lower_bound] * self.num_goals)
+
+        lower_full_positional_state = np.concatenate([self.arm_lower_lim] + [obj_lower_positional_lim] * self.num_objects) # like the obs dim, but without velocity.
+        upper_full_positional_state = np.concatenate([self.arm_upper_lim] + [obj_upper_positional_lim] * self.num_objects)
+
+        #self.action_space = spaces.Box(self.arm_lower_lim, self.arm_upper_lim)
+
+        self.observation_space = spaces.Dict(dict(
+            desired_goal=spaces.Box(lower_goal_dim, upper_goal_dim),
+            achieved_goal=spaces.Box(lower_goal_dim, upper_goal_dim),
+            observation=spaces.Box(lower_obs_dim, upper_obs_dim),
+            controllable_achieved_goal=spaces.Box(self.arm_lower_lim, self.arm_upper_lim),
+            full_positional_state=spaces.Box( lower_full_positional_state, upper_full_positional_state)
+        ))
+
+
+        if sparse:
+            self.compute_reward = self.compute_reward_sparse
+
+    # Resets the instances until reward is not satisfied
+    def reset(self, o = None, vr =None):
+
+        if not self.physics_client_active:
+            self.activate_physics_client(vr)
+            self.physics_client_active = True
+
+        r = 0
+        while r > -1:
+            # reset again if we init into a satisfied state
+
+            self.instance.reset(o)
+            obs = self.instance.calc_state()
+            r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
+
+        return obs
+
+    # Directly reset the goal position
+    def reset_goal_pos(self, goal):
+        self.instance.reset_goal_pos(goal)
+
+    # Sets whether to render the scene
+    # Img will be returned as part of the state which comes from obs, 
+    # rather than from calling .render(rgb) every time as in some other envs
+    def render(self, mode):
+        if (mode == "human"):
+            self.render_scene = True
+            return np.array([])
+        if mode == 'rgb_array':
+            self.instance.record_images = True
+        if mode == 'playback':
+            self.instance.record_images = True
+
+    # Classic dict-env .step function
+    def step(self, action):
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+        targetPoses = self.instance.perform_action(action, self.action_type)
+        self.instance.runSimulation()
+        obs = self.instance.calc_state()
+        r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
+        done = False
+        success = 0 if r < 0 else 1
+        return obs, r, done, {'is_success': success, 'target_poses': targetPoses}
+
+    # Activates the GUI or headless physics client, and creates arm instance within it
+    # Within this function is the call which selects which scene 'no obj, one obj, play etc - defined in scenes.py'
+    def activate_physics_client(self, vr=None):
+
+        if self.render_scene:
+            if vr is None:
+                self.p = bullet_client.BulletClient(connection_mode=p.GUI)
+                #self.p.configureDebugVisualizer(p.COV_ENABLE_Y_AXIS_UP, 1)
+                self.p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+            else:
+                # Trying to rig up VR
+                self.p =  bullet_client.BulletClient(connection_mode=p.SHARED_MEMORY)
+        else:
+            self.p = bullet_client.BulletClient(connection_mode=p.DIRECT)
+
+        self.p.setAdditionalSearchPath(pd.getDataPath())
+
+        self.p.setTimeStep(self.timeStep)
+        self.p.setGravity(0, 0, -9.8)
+
+        if self.play:
+            scene = complex_scene
+        else:
+            if self.num_objects == 0 :
+                scene = default_scene
+            elif self.num_objects == 1:
+                scene = push_scene
+        self.instance = instance(self.p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
+                                        self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
+                                        self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,  self.use_orientation, self.return_velocity,
+                                         self.render_scene, fixed_gripper=self.fixed_gripper, 
+                                        play=self.play, show_goal = self.show_goal, num_objects=self.num_objects, arm_type=self.arm_type)
+        self.instance.control_dt = self.timeStep
+        self.p.resetDebugVisualizerCamera(distance, yaw, pitch, lookat)
+
+    # With VR, a physics server is already created - this connects to it
+    def vr_activation(self, vr=None):
+        self.p = bullet_client.BulletClient(connection_mode=p.SHARED_MEMORY)
+
+        self.p.setAdditionalSearchPath(pd.getDataPath())
+
+        self.p.setTimeStep(self.timeStep)
+        self.p.setGravity(0, 0, -9.8)
+        scene = complex_scene
+        self.instance = instance(self.p, [0, 0, 0], scene, self.arm_lower_lim, self.arm_upper_lim,
+                                  self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
+                                  self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,
+                                  self.use_orientation, self.return_velocity,
+                                  self.render_scene, fixed_gripper=self.fixed_gripper,
+                                  play=self.play, num_objects=self.num_objects, arm_type=self.arm_type)
+        self.instance.control_dt = self.timeStep
+        self.physics_client_active = True
+
+    def calc_target_distance(self, achieved_goal, desired_goal):
+        distance = np.linalg.norm(achieved_goal - desired_goal)
+        return distance
+
+    # A basic dense reward metric, distance from goal state
+    def compute_reward(self, achieved_goal, desired_goal):
+        return -self.calc_target_distance(achieved_goal,desired_goal)
+
+    # A piecewise reward function, for each object it determines if all dims are within the threshold and increments reward if so
+    def compute_reward_sparse(self, achieved_goal, desired_goal, info=None):
+        if self.play:
+            # This success function lives in 'playRewardFunc.py'
+            return success_func(achieved_goal, desired_goal)
+        else:
+            initially_vectorized = True
+            dimension = 3
+            if len(achieved_goal.shape) == 1:
+                achieved_goal = np.expand_dims(np.array(achieved_goal), axis=0)
+                desired_goal = np.expand_dims(np.array(desired_goal), axis=0)
+                initially_vectorized = False
+
+            reward = np.zeros(len(achieved_goal))
+            # only compute reward on pos not orn for the moment
+            g_ag = 0 # increments of dimension, then skip 4 for ori
+            g_dg = 0 # increments of dimension,
+            for g in range(0, self.num_goals):  # piecewise reward
+                current_distance = np.linalg.norm(achieved_goal[:, g_ag:g_ag + dimension] - desired_goal[:, g_dg:g_dg + dimension],
+                                                axis=1)
+                reward += np.where(current_distance > self.sparse_rew_thresh, -1, -current_distance)
+                g_ag += dimension+ 4 # for ori
+                g_dg += dimension
+
+            if not initially_vectorized:
+                return reward[0]
+            else:
+                return reward
+
+    # Env level sub goal visualisation and deletion 
+    def visualise_sub_goal(self, sub_goal, sub_goal_state = 'full_positional_state'):
+        self.instance.visualise_sub_goal(sub_goal, sub_goal_state = sub_goal_state)
+
+    def delete_sub_goal(self):
+        try:
+            self.instance.delete_sub_goal()
+        except:
+            pass
+
 
 class instance():
     def __init__(self, bullet_client, offset, load_scene, arm_lower_lim, arm_upper_lim,
@@ -328,7 +593,7 @@ class instance():
         self.t = 0
 
     # Visualises the sub-goal passed to it as transparent version of the current goals (whether environment pieces, or the arm itself in reaching tasks)
-    def visualise_sub_goal(self, sub_goal, sub_goal_state = 'full_positional_state'): # Todo this does not yet account for if we would like to do subgoals with orientation.
+    def visualise_sub_goal(self, sub_goal, sub_goal_state = 'achieved_goal'): 
         '''
         Supports a number of different types of goal, all of which are returned by the 'calc_state' function
         Full positional state : This is every (non velocity) aspect of the obs as a goal
@@ -519,8 +784,8 @@ class instance():
 
     
     # Combines actor and environment state into vectors, and takes all the different slices one could want in a return dict
-    # Vector size is different depending on whether you are returning just pos, pos & orn, pos, orn & vel
-    # Most used keys will be observation (full state, no vel), achieved_goal (just environment state), desired_goal (currently specified goal)
+    # Vector size is different depending on whether you are returning just pos, pos & orn, pos, orn & vel etc as specified
+    # Keys to know :  observation (full state, no vel), achieved_goal (just environment state), desired_goal (currently specified goal)
     def calc_state(self):
 
         if self.play:
@@ -731,7 +996,7 @@ class instance():
             targetPoses = self.goto_joint_poses(jointPoses, gripper)
         return targetPoses
 
-    # Step 2. Send joint commands to the robot
+    # Step 2. Send joint commands to the robot - by default UR5 uses a support function in 'inverseKinematics.py' for greater stability
     def goto_joint_poses(self, jointPoses, gripper):
         indexes = [i for i in range(self.numDofs)]
         index_len = len(indexes)
@@ -796,264 +1061,3 @@ class instance():
                                                     force=100)
             self.bullet_client.setJointMotorControl2(self.arm, 13, self.bullet_client.POSITION_CONTROL, driver_mimic,
                                                         force=100)
-
-'''
-The main gym env.
-This was originally set up to support RL, so that you could have many many 'instances' at different position in the 
-world (using the 'offset' arg). It currently only supports one instance, but would be easy to adapt to multiple instances
-with loops inside step, activate physics client, and compute reward functions
-'''
-class playEnv(gym.GoalEnv):
-    metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second': 60
-    }
-
-    def __init__(self, num_objects = 0, env_range_low = [-0.18, -0.18,-0.05 ], env_range_high = [0.18, 0.18, 0.15], goal_range_low = [-0.18, -0.18, -0.05], goal_range_high = [0.18, 0.18, 0.05],
-                 obj_lower_bound = [-0.18, -0.18, -0.05], obj_upper_bound = [-0.18, -0.18, -0.05], sparse=True, use_orientation=False,
-                 sparse_rew_thresh=0.05, fixed_gripper = False, return_velocity=True, max_episode_steps=250, 
-                 play=False, action_type = 'absolute_rpy', show_goal=True, arm_type= 'Panda'): # action type can be relative, absolute, or joint relative
-        fps = 300
-        self.timeStep = 1. / fps
-        self.render_scene = False
-        self.physics_client_active = 0
-        self.num_objects  = num_objects
-        self.use_orientation = use_orientation
-        self.return_velocity = return_velocity
-        self.fixed_gripper = fixed_gripper
-        self.sparse_reward_threshold = sparse_rew_thresh
-        self.num_goals = max(self.num_objects, 1)
-        self.play = play
-        self.action_type = action_type
-        self.show_goal = show_goal
-        self.arm_type = arm_type
-        obs_dim = 8
-        self.sparse_rew_thresh = sparse_rew_thresh
-        self._max_episode_steps = max_episode_steps
-
-        obs_dim += 7 * num_objects  # pos and vel of the other pm that we are knocking around.
-        # TODO actually clip input actions by this amount!!!!!!!!
-        pos_step = 0.015
-        orn_step = 0.1
-        if action_type == 'absolute_quat':
-            pos_step = 1.0
-            if self.use_orientation:
-                high = np.array([pos_step,pos_step,pos_step,1,1,1,1,1]) # use absolute orientations
-            else:
-                high = np.array([pos_step, pos_step, pos_step, 1])
-        elif action_type == 'relative_quat':
-            high = np.array([1, 1, 1, 1, 1, 1,1, 1])
-        elif action_type == 'relative_joints':
-            if self.arm_type == 'UR5':
-                high = np.array([1,1,1,1,1,1, 1])
-            else:
-                high = np.array([1,1,1,1,1,1,1, 1])
-        elif action_type == 'absolute_joints':
-            if self.arm_type == 'UR5':
-                high = np.array([6, 6, 6, 6, 6, 6, 1])
-            else:
-                high = np.array([6, 6, 6, 6, 6, 6, 6, 1])
-        elif action_type == 'absolute_rpy':
-            high = np.array([6, 6, 6, 6, 6, 6, 1])
-        elif action_type == 'relative_rpy':
-            high = np.array([1,1,1,1,1,1, 1])
-        else:
-            if self.use_orientation:
-                high = np.array([pos_step, pos_step, pos_step, orn_step,orn_step,orn_step, 1])
-            else:
-                high = np.array([pos_step, pos_step, pos_step, 1])
-        self.action_space = spaces.Box(-high, high)
-        
-
-        self.env_upper_bound = np.array(env_range_high)
-        self.env_lower_bound = np.array(env_range_low)
-        #self.env_lower_bound[1] = 0  # set the y (updown) min to 0.
-        self.goal_upper_bound = np.array(goal_range_high)
-        self.goal_lower_bound = np.array(goal_range_low)
-        #self.goal_lower_bound[1] = 0  # set the y (updown) min to 0.
-
-        self.obj_lower_bound = obj_lower_bound
-        self.obj_upper_bound = obj_upper_bound
-
-        if use_orientation:
-            self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 1, 0.04])])
-            self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([1, 1, 1, 1, 0.0])])
-            arm_upper_obs_lim = np.concatenate(
-                [self.env_upper_bound, np.array([1, 1, 1, 1, 1, 1, 1, 0.04])])  # includes velocity
-            arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1, 1, 1, 1, 1, 0.0])])
-            obj_upper_lim = np.concatenate([self.obj_upper_bound, np.ones(7)]) # velocity and orientation
-            obj_lower_lim = np.concatenate([self.obj_lower_bound, -np.ones(7)]) # velocity and orientation
-            obj_upper_positional_lim = np.concatenate([self.env_upper_bound, np.ones(4)])
-            obj_lower_positional_lim = np.concatenate([self.env_lower_bound, -np.ones(4)])
-        else:
-            self.arm_upper_lim = np.concatenate([self.env_upper_bound, np.array([0.04])])
-            self.arm_lower_lim = np.concatenate([self.env_lower_bound, -np.array([0.0])])
-            arm_upper_obs_lim = np.concatenate([self.env_upper_bound, np.array([1, 1, 1, 0.04])])  # includes velocity
-            arm_lower_obs_lim = np.concatenate([self.env_upper_bound, -np.array([1, 1, 1, 0.0])])
-            obj_upper_lim = np.concatenate([self.obj_upper_bound, np.ones(3)])
-            obj_lower_lim =  np.concatenate([self.obj_lower_bound, -np.ones(3)])
-            obj_upper_positional_lim = self.env_upper_bound
-            obj_lower_positional_lim = self.env_lower_bound
-
-        upper_obs_dim = np.concatenate([arm_upper_obs_lim] + [obj_upper_lim] * self.num_objects)
-        lower_obs_dim = np.concatenate([arm_lower_obs_lim] + [obj_lower_lim] * self.num_objects)
-        upper_goal_dim = np.concatenate([self.env_upper_bound] * self.num_goals)
-        lower_goal_dim = np.concatenate([self.env_lower_bound] * self.num_goals)
-
-        lower_full_positional_state = np.concatenate([self.arm_lower_lim] + [obj_lower_positional_lim] * self.num_objects) # like the obs dim, but without velocity.
-        upper_full_positional_state = np.concatenate([self.arm_upper_lim] + [obj_upper_positional_lim] * self.num_objects)
-
-        #self.action_space = spaces.Box(self.arm_lower_lim, self.arm_upper_lim)
-
-        self.observation_space = spaces.Dict(dict(
-            desired_goal=spaces.Box(lower_goal_dim, upper_goal_dim),
-            achieved_goal=spaces.Box(lower_goal_dim, upper_goal_dim),
-            observation=spaces.Box(lower_obs_dim, upper_obs_dim),
-            controllable_achieved_goal=spaces.Box(self.arm_lower_lim, self.arm_upper_lim),
-            full_positional_state=spaces.Box( lower_full_positional_state, upper_full_positional_state)
-        ))
-
-
-        if sparse:
-            self.compute_reward = self.compute_reward_sparse
-
-
-    # Resets the instances until reward is not satisfied
-    def reset(self, o = None, vr =None):
-
-        if not self.physics_client_active:
-            self.activate_physics_client(vr)
-            self.physics_client_active = True
-
-        r = 0
-        while r > -1:
-            # reset again if we init into a satisfied state
-
-            self.instance.reset(o)
-            obs = self.instance.calc_state()
-            r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
-
-        return obs
-
-    # Directly reset the goal position
-    def reset_goal_pos(self, goal):
-        self.instance.reset_goal_pos(goal)
-
-    # Sets whether to render the scene
-    # Img will be returned as part of the state which comes from obs, 
-    # rather than from calling .render(rgb) every time as in some other envs
-    def render(self, mode):
-        if (mode == "human"):
-            self.render_scene = True
-            return np.array([])
-        if mode == 'rgb_array':
-            self.instance.record_images = True
-        if mode == 'playback':
-            self.instance.record_images = True
-
-    # Classic dict-env .step function
-    def step(self, action):
-        action = np.clip(action, self.action_space.low, self.action_space.high)
-        targetPoses = self.instance.perform_action(action, self.action_type)
-        self.instance.runSimulation()
-        obs = self.instance.calc_state()
-        r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
-        done = False
-        success = 0 if r < 0 else 1
-        return obs, r, done, {'is_success': success, 'target_poses': targetPoses}
-
-    # Activates the GUI or headless physics client, and creates arm instance within it
-    def activate_physics_client(self, vr=None):
-
-        if self.render_scene:
-            if vr is None:
-                self.p = bullet_client.BulletClient(connection_mode=p.GUI)
-                #self.p.configureDebugVisualizer(p.COV_ENABLE_Y_AXIS_UP, 1)
-                self.p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-            else:
-                # Trying to rig up VR
-                self.p =  bullet_client.BulletClient(connection_mode=p.SHARED_MEMORY)
-        else:
-            self.p = bullet_client.BulletClient(connection_mode=p.DIRECT)
-
-        self.p.setAdditionalSearchPath(pd.getDataPath())
-
-        self.p.setTimeStep(self.timeStep)
-        self.p.setGravity(0, 0, -9.8)
-
-        if self.play:
-            scene = complex_scene
-        else:
-            if self.num_objects == 0 :
-                scene = default_scene
-            elif self.num_objects == 1:
-                scene = push_scene
-        self.instance = instance(self.p, [0, 0, 0], scene,  self.arm_lower_lim, self.arm_upper_lim,
-                                        self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
-                                        self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,  self.use_orientation, self.return_velocity,
-                                         self.render_scene, fixed_gripper=self.fixed_gripper, 
-                                        play=self.play, show_goal = self.show_goal, num_objects=self.num_objects, arm_type=self.arm_type)
-        self.instance.control_dt = self.timeStep
-        self.p.resetDebugVisualizerCamera(distance, yaw, pitch, lookat)
-
-    # With VR, a physics server is already created - this connects to it
-    def vr_activation(self, vr=None):
-        self.p = bullet_client.BulletClient(connection_mode=p.SHARED_MEMORY)
-
-        self.p.setAdditionalSearchPath(pd.getDataPath())
-
-        self.p.setTimeStep(self.timeStep)
-        self.p.setGravity(0, 0, -9.8)
-        scene = complex_scene
-        self.instance = instance(self.p, [0, 0, 0], scene, self.arm_lower_lim, self.arm_upper_lim,
-                                  self.env_lower_bound, self.env_upper_bound, self.goal_lower_bound,
-                                  self.goal_upper_bound, self.obj_lower_bound, self.obj_upper_bound,
-                                  self.use_orientation, self.return_velocity,
-                                  self.render_scene, fixed_gripper=self.fixed_gripper,
-                                  play=self.play, num_objects=self.num_objects, arm_type=self.arm_type)
-        self.instance.control_dt = self.timeStep
-        self.physics_client_active = True
-
-
-    def calc_target_distance(self, achieved_goal, desired_goal):
-        distance = np.linalg.norm(achieved_goal - desired_goal)
-        return distance
-
-    # A basic dense reward metric, distance from goal state
-    def compute_reward(self, achieved_goal, desired_goal):
-        return -self.calc_target_distance(achieved_goal,desired_goal)
-
-    # A piecewise reward function, for each object it determines if all dims are within the threshold and increments reward if so
-    def compute_reward_sparse(self, achieved_goal, desired_goal, info=None):
-
-        initially_vectorized = True
-        dimension = 3
-        if len(achieved_goal.shape) == 1:
-            achieved_goal = np.expand_dims(np.array(achieved_goal), axis=0)
-            desired_goal = np.expand_dims(np.array(desired_goal), axis=0)
-            initially_vectorized = False
-
-        reward = np.zeros(len(achieved_goal))
-        # only compute reward on pos not orn for the moment
-        g_ag = 0 # increments of dimension, then skip 4 for ori
-        g_dg = 0 # incremenets of dimesion
-        for g in range(0, self.num_goals):  # piecewise reward
-            current_distance = np.linalg.norm(achieved_goal[:, g_ag:g_ag + dimension] - desired_goal[:, g_dg:g_dg + dimension],
-                                              axis=1)
-            reward += np.where(current_distance > self.sparse_rew_thresh, -1, -current_distance)
-            g_ag += dimension+ 4 # for ori
-            g_dg += dimension
-
-        if not initially_vectorized:
-            return reward[0]
-        else:
-            return reward
-
-    # Env level sub goal visualisation and deletion 
-    def visualise_sub_goal(self, sub_goal, sub_goal_state = 'full_positional_state'):
-        self.instance.visualise_sub_goal(sub_goal, sub_goal_state = sub_goal_state)
-
-    def delete_sub_goal(self):
-        self.instance.delete_sub_goal()
-
-

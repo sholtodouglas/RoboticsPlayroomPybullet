@@ -42,8 +42,7 @@ def main():
             poses  = []
             for i in range(0, len(env.instance.restJointPositions)):
                 poses.append(env.p.readUserDebugParameter(i))
-
-            poses[0:len(env.instance.ul)] = np.clip(poses[0:len(env.instance.ul)], env.instance.ll, env.instance.ul)
+            # Uses a hard reset of the arm joints so that we can quickly debug without worrying about forces
             env.instance.reset_arm_joints(env.instance.arm, poses)
 
         else:

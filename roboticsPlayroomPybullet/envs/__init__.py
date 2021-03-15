@@ -1,4 +1,5 @@
 from roboticsPlayroomPybullet.envs.envList import pandaReach
+from roboticsPlayroomPybullet.envs.envList import UR5Reach
 from roboticsPlayroomPybullet.envs.envList import pandaReach2D
 from roboticsPlayroomPybullet.envs.envList import pandaPush
 from roboticsPlayroomPybullet.envs.envList import pandaPick

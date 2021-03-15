@@ -62,6 +62,11 @@ register(
     entry_point='roboticsPlayroomPybullet.envs:pandaPlayRelRPY1Obj',
 )
 
+register(
+    id='UR5Reach-v0',
+    entry_point='roboticsPlayroomPybullet.envs:UR5Reach',
+)
+
 
 register(
     id='UR5Play1Obj-v0',

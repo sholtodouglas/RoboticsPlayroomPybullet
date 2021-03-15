@@ -23,8 +23,8 @@ def add_joint_controls(env):
 joint_control = False #Toggle this flag to control joints or ABS RPY Space
 def main():
     
-    env_type = {False: UR5PlayAbsRPY1Obj , True: UR5PlayAbsJoints1Obj}
-    env = env_type[joint_control]()
+
+    env = UR5Reach() #UR5PlayAbsRPY1Obj()
     
     env.render(mode='human')
     env.reset()
@@ -52,6 +52,7 @@ def main():
 
             state = env.instance.calc_actor_state()
             obs, r, done, info = env.step(np.array(action))
+            print(r)
              
             # Shows the block position just above where it is
             # x = obs['achieved_goal']

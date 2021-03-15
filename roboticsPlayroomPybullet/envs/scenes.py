@@ -37,7 +37,7 @@ def push_scene(bullet_client, offset, flags, env_range_low, env_range_high):
 
     legos.append(block)
         #bullet_client.loadURDF(os.path.dirname(os.path.abspath(__file__)) + "/env_meshes/lego/lego.urdf", np.array([0.1, 0.3, -0.5]) + offset, flags=flags))
-    add_hinge(bullet_client, offset, flags)
+    
     return legos
 
 

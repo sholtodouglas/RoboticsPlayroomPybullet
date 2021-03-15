@@ -14,7 +14,7 @@ This is an overview of the code, the comments should guide you into understandin
 ### UR5PlayAbsRPY1Obj-v0
 <p align="center">
 	<a href="https://sholtodouglas.github.io/images/play/headline.gif">
-		<img src="media/headline.gif">
+		<img src="readme_assets/headline.gif">
 	</a>
 </p>
 

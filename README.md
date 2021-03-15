@@ -1,7 +1,7 @@
 
 Environments to support https://github.com/sholtodouglas/learning_from_play and reinforcement learning for robotic manipulation.
 
-[An example playing out the teleop data](https://github.com/sholtodouglas/learning_from_play/blob/ecd16531422e6e123d22aa58a6abd5d9dc08abfa/notebooks/Minimal%20Example.ipynb), this example replays the teleop data and also showcases the functionality of the env as an RL environment (reset goal, visualise goal, sparse reward function etc).
+[An example playing out the teleop data](https://github.com/sholtodouglas/learning_from_play/blob/ecd16531422e6e123d22aa58a6abd5d9dc08abfa/notebooks/Minimal%20Example.ipynb), which also showcases the functionality of the env as an RL environment (reset goal, visualise goal, reward function etc).
 
 [An example where you can use the GUI to control the robot](https://github.com/sholtodouglas/RoboticsPlayroomPybullet/blob/280818586cf001599110acaddb78d216d5056914/roboticsPlayroomPybullet/envs/interactive.py)
 

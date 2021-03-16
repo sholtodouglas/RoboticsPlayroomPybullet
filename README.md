@@ -9,8 +9,8 @@ Environments to support https://github.com/sholtodouglas/learning_from_play and 
 
 [The file to run if you want to teleoperate new trajectories](https://github.com/sholtodouglas/learning_from_play/blob/77be8ecd9f6c5a730c49b502ca56f2f26f938d6c/data_collection/vr_data_collection.py), this works with any VR headset which can interface with steamVR. Instructions are within the file.
 
-This is an overview of the code, the comments should guide you into understanding any pieces you wish to modify. 
-![alt-text-1](/roboticsPlayroomPybullet/readme_assets/code.png "side by side comparison")
+This a high level overview of the code can be found here roboticsPlayroomPybullet/readme_assets/code.png. 
+
 
 
 ### UR5PlayAbsRPY1Obj-v0

@@ -18,7 +18,7 @@ A high level overview of the code can be found [here](https://github.com/sholtod
 ![alt-text-1](https://github.com/sholtodouglas/learning_from_play/blob/d17bf6dc0fafc74b7a3d63977efc41c67f1640c6/media/headline.gif)
 
 
-The environment also supports a number of more basic test environments, and other arms. The full list of these is defined in the gym registry here at - roboticsPlayroomPybullet/__init__.py. E.g.
+The environment also supports a number of more basic test environments, and other arms. The full list of these is defined in the gym registry [here.](https://github.com/sholtodouglas/RoboticsPlayroomPybullet/blob/2fef21ed1683de7fb9b9b60e8e96ff3a082a6499/roboticsPlayroomPybullet/__init__.py)
 
 ### UR5Reach-v0
 

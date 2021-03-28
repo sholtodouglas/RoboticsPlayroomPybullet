@@ -23,7 +23,9 @@ distance = 0.8
 yaw = 130
 pitch = -130
 pixels = 200
-viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=lookat, distance=distance, yaw=yaw, pitch=pitch, roll=0,
+# viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=lookat, distance=distance, yaw=yaw, pitch=pitch, roll=0,
+#                                                  upAxisIndex=2)
+viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0, 0.25, 0], distance=1.3, yaw=-30, pitch=-30, roll=0,
                                                  upAxisIndex=2)
 projectionMatrix = p.computeProjectionMatrixFOV(fov=50, aspect=1, nearVal=0.01, farVal=10)
 
@@ -505,6 +507,14 @@ class instance():
                 self.bullet_client.resetBasePositionAndOrientation(self.goals[g], pos, [0, 0, 0, 1])
                 self.bullet_client.changeConstraint(self.goal_cids[g], pos, maxForce=100)
                 index += 3
+
+        if self.play:
+            # Unless specified by an external party, just set the goal to a random pertubation of the existing state
+            c = self.calc_state()['achieved_goal']
+            random_index= np.random.choice(len(c))
+            c[random_index] += np.random.random()
+            self.goal = c
+
     # Resets object positions, if an obs is passed in - the objects will be reset using that
     def reset_object_pos(self, obs=None):
         # Todo object velocities to make this properly deterministic

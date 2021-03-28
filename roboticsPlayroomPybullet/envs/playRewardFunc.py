@@ -63,7 +63,7 @@ def compare_dial(g,ag, limit=0.3):
 '''
 Could easily convert this to piece wise function if desired - currently sparse for complete success
 '''
-def success_func(g, ag):
+def success_func(ag, g):
     g,ag = np.squeeze(g), np.squeeze(ag)
     if compare_xyz(g[block[0]:block[1]], ag[block[0]:block[1]])\
      and compare_RPY(g[qqqq[0]:qqqq[1]], ag[qqqq[0]:qqqq[1]]) \

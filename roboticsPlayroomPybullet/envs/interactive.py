@@ -24,7 +24,7 @@ joint_control = False #Toggle this flag to control joints or ABS RPY Space
 def main():
     
 
-    env = UR5Reach() #UR5PlayAbsRPY1Obj()
+    env = UR5PlayAbsRPY1Obj()
     
     env.render(mode='human')
     env.reset()

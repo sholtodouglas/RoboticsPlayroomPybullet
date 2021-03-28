@@ -1,5 +1,7 @@
 import numpy as np
 import os
+TEST_OLD = True
+
 def nothing_scene(bullet_client, offset, flags):
 
     return []
@@ -82,76 +84,35 @@ def complex_scene(bullet_client, offset, flags, env_range_low, env_range_high, n
 
     return legos, drawer, [door,button, dial], {button: ('button', toggleSphere), dial: ('dial', toggleGrill)} # return the toggle sphere with it's joint index
 
-# def add_static(bullet_client):
-#     texUid = bullet_client.loadTexture(os.path.dirname(
-#         os.path.abspath(__file__)) + '/env_meshes/table.png')
-#     # TableTop
-#     width = 0.35
-#     colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.28, 0.005])
-#     visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.28, 0.005], rgbaColor=[0.75, 0.4, 0.2, 1])
-#     block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0, 0.25, -0.03])
-#     bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
-
-#     # Cabinet back
-#     colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.01, 0.235])
-#     visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.01, 0.235],
-#                                                  rgbaColor=[0.75, 0.4, 0.2, 1])
-#     block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0., 0.52, -0.00])
-#     bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
-#     # Cabinet top
-#     width = 0.37
-#     colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.005])
-#     visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.005],
-#                                                  rgbaColor=[0.75, 0.4, 0.2, 1])
-#     block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0., 0.45, 0.24])
-#     bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
-#     # Cabinet sides
-#     width = 0.03
-#     colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.235])
-#     visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.235],
-#                                                  rgbaColor=[0.75, 0.4, 0.2, 1])
-#     block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [-0.34, 0.45, -0.00])
-#     bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
-
-#     colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.235])
-#     visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.235],
-#                                                  rgbaColor=[0.75, 0.4, 0.2, 1])
-#     block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0.34, 0.45, -0.00])
-#     bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
-
 
 def add_static(bullet_client):
-    texUid = bullet_client.loadTexture(os.path.dirname(
-        os.path.abspath(__file__)) + '/env_meshes/wood.png')
+    texUid = bullet_client.loadTexture(os.path.dirname(os.path.abspath(__file__)) + '/env_meshes/wood.png')
+
+    def create(halfExtents, location):
+        colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=halfExtents)
+        if TEST_OLD:
+            visplaneId =  bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=halfExtents,
+                                                 rgbaColor=[0.75, 0.4, 0.2, 1])
+            block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, location)
+
+        else:
+            visplaneId =  bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=halfExtents)
+            block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, location)
+            bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
+
     # TableTop
     width = 0.35
-    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.28, 0.005])
-    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.28, 0.005])
-    block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0, 0.25, -0.03])
-    bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
-
+    create(halfExtents=[width, 0.28, 0.005], location = [0, 0.25, -0.03])
     # Cabinet back
-    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.01, 0.235])
-    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.01, 0.235])
-    block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0., 0.52, -0.00])
-    bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
+    create(halfExtents=[width, 0.01, 0.235], location = [0., 0.52, -0.00])
     # Cabinet top
     width = 0.37
-    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.005])
-    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.005])
-    block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0., 0.45, 0.24])
-    bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
+    create(halfExtents=[width, 0.065, 0.005], location =[0., 0.45, 0.24])
     # Cabinet sides
     width = 0.03
-    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.235])
-    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.235])
-    block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [-0.34, 0.45, -0.00])
-    bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
+    create(halfExtents=[width, 0.065, 0.235], location =[-0.34, 0.45, -0.00])
+    create(halfExtents=[width, 0.065, 0.235], location =[0.34, 0.45, -0.00])
 
-    colcubeId = bullet_client.createCollisionShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.235])
-    visplaneId = bullet_client.createVisualShape(bullet_client.GEOM_BOX, halfExtents=[width, 0.065, 0.235])
-    block = bullet_client.createMultiBody(0.0, colcubeId, visplaneId, [0.34, 0.45, -0.00])
-    bullet_client.changeVisualShape(block, -1, textureUniqueId=texUid)
 
 def add_door(bullet_client, offset=np.array([0, 0, 0]), flags=None, ghostly=False):
     sphereRadius = 0.1
@@ -173,7 +134,10 @@ def add_door(bullet_client, offset=np.array([0, 0, 0]), flags=None, ghostly=Fals
         linkVisualShapeIndices = [visId]
     else:
         visId = bullet_client.createVisualShape(bullet_client.GEOM_MESH, fileName = os.path.dirname(os.path.abspath(__file__)) + '/env_meshes/door_textured.obj', meshScale = [0.0015] * 3,  flags = bullet_client.GEOM_FORCE_CONCAVE_TRIMESH)
-        linkVisualShapeIndices = [visId]
+        if TEST_OLD:
+               linkVisualShapeIndices = [-1]
+        else:
+                linkVisualShapeIndices = [visId]
 
     linkPositions = [[0.0, 0.0, 0.27]]
     linkOrientations = [bullet_client.getQuaternionFromEuler([0, np.pi / 2, 0])]
